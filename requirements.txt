@@ -4,8 +4,8 @@ httpx>=0.25.0
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 
-# Google ADK (will be added when implementing agents)
-# google-genai-adk>=0.1.0
+# Google ADK (for Phase 4+ agents)
+google-genai-adk>=0.1.0
 
 # HTML parsing (for Phase 3)
 beautifulsoup4>=4.12.0
