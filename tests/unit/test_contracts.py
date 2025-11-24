@@ -11,7 +11,7 @@ Tests cover:
 import pytest
 from datetime import datetime
 from pydantic import ValidationError
-from contracts.blog_models import (
+from nvidia_blog_agent.contracts.blog_models import (
     BlogPost,
     RawBlogContent,
     BlogSummary,

@@ -56,12 +56,17 @@ The system automatically detects which backend to use based on environment varia
 git clone https://github.com/YOUR_USERNAME/nvidia_blog_agent.git
 cd nvidia_blog_agent
 
-# Install dependencies
-pip install -r requirements.txt
+# Install the package in editable mode (recommended for development)
+pip install -e .
+
+# Or install with optional ADK support
+pip install -e ".[adk]"
 
 # Set up Google Cloud credentials
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 ```
+
+**Note:** The package uses modern Python packaging (`pyproject.toml`). Installing in editable mode (`-e`) makes the package importable and allows you to edit source code without reinstalling.
 
 ### Configuration
 
@@ -116,99 +121,145 @@ All 182 tests should pass.
 
 ### Running Ingestion
 
-```python
-import asyncio
-from nvidia_blog_agent.config import load_config_from_env
-from nvidia_blog_agent.rag_clients import create_rag_clients
-from nvidia_blog_agent.agents.workflow import run_ingestion_pipeline
-from nvidia_blog_agent.agents.gemini_summarizer import GeminiSummarizer
-from nvidia_blog_agent.context.session_config import (
-    get_existing_ids_from_state,
-    update_existing_ids_in_state,
-    store_last_ingestion_result_metadata,
-)
+Use the `run_ingest.py` script to run a complete ingestion pass:
 
-# Your HtmlFetcher implementation
-class HttpHtmlFetcher:
-    async def fetch_html(self, url: str) -> str:
-        import httpx
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp.text
+```bash
+# Basic usage (uses default state.json and NVIDIA blog feed)
+python scripts/run_ingest.py
 
-async def main():
-    config = load_config_from_env()
-    ingest_client, retrieve_client = create_rag_clients(config)
-    
-    state = {}
-    existing_ids = get_existing_ids_from_state(state)
-    
-    # Fetch feed HTML (your implementation)
-    feed_html = "<html>...</html>"
-    
-    fetcher = HttpHtmlFetcher()
-    summarizer = GeminiSummarizer(config.gemini)
-    
-    result = await run_ingestion_pipeline(
-        feed_html=feed_html,
-        existing_ids=existing_ids,
-        fetcher=fetcher,
-        summarizer=summarizer,
-        rag_client=ingest_client,
-    )
-    
-    update_existing_ids_in_state(state, result.new_posts)
-    store_last_ingestion_result_metadata(state, result)
-    
-    print(f"Processed {len(result.summaries)} summaries")
+# Specify custom state file
+python scripts/run_ingest.py --state-path state.json
 
-asyncio.run(main())
+# Use GCS for state persistence
+python scripts/run_ingest.py --state-path gs://nvidia-blog-agent-state/state.json
+
+# Use custom feed URL
+python scripts/run_ingest.py --feed-url https://custom-blog.com
+
+# Enable verbose logging
+python scripts/run_ingest.py --verbose
 ```
+
+The script will:
+1. Load configuration from environment variables
+2. Load persisted state (tracks previously seen blog post IDs)
+3. Fetch the NVIDIA Tech Blog feed HTML
+4. Discover new posts, scrape content, summarize, and ingest into RAG
+5. Update and save state with new post IDs and ingestion metadata
+
+**State Persistence:**
+
+State can be stored locally or in GCS:
+- **Local file**: `--state-path state.json` (default)
+- **GCS**: `--state-path gs://bucket-name/state.json`
+- **Environment variable**: Set `STATE_PATH` to override default
 
 ### Running QA Queries
 
-```python
-import asyncio
-from nvidia_blog_agent.config import load_config_from_env
-from nvidia_blog_agent.rag_clients import create_rag_clients
-from nvidia_blog_agent.agents.gemini_qa_model import GeminiQaModel
-from nvidia_blog_agent.agents.qa_agent import QAAgent
+Use the `run_qa.py` script to query the RAG system:
 
-async def main():
-    config = load_config_from_env()
-    ingest_client, retrieve_client = create_rag_clients(config)
-    
-    qa_model = GeminiQaModel(config.gemini)
-    qa_agent = QAAgent(rag_client=retrieve_client, model=qa_model)
-    
-    answer, docs = await qa_agent.answer("What did NVIDIA say about RAG on GPUs?", k=5)
-    
-    print("Answer:", answer)
-    print("Sources:", [d.title for d in docs])
+```bash
+# Query via command line argument
+python scripts/run_qa.py "What did NVIDIA say about RAG on GPUs?"
 
-asyncio.run(main())
+# Query via stdin
+echo "What is GPU acceleration?" | python scripts/run_qa.py
+
+# Specify number of documents to retrieve
+python scripts/run_qa.py "Tell me about CUDA" --top-k 10
+
+# Enable verbose logging
+python scripts/run_qa.py "Question here" --verbose
 ```
+
+The script will:
+1. Load configuration and create RAG retrieve client
+2. Retrieve relevant documents from the RAG backend
+3. Generate an answer using Gemini based on retrieved documents
+4. Display the answer and source document titles/URLs
 
 ## Documentation
 
-- **[USAGE_EXAMPLE.md](USAGE_EXAMPLE.md)**: Detailed code examples for using the system
 - **[VERTEX_RAG_SETUP.md](VERTEX_RAG_SETUP.md)**: Complete guide for setting up Vertex AI RAG Engine
-- **[ENGINEERING_STATUS_REPORT.md](ENGINEERING_STATUS_REPORT.md)**: Comprehensive technical documentation
+
+### Code Examples
+
+#### Basic Usage
+
+```python
+from nvidia_blog_agent.config import load_config_from_env
+from nvidia_blog_agent.rag_clients import create_rag_clients
+from nvidia_blog_agent.agents.gemini_summarizer import GeminiSummarizer
+from nvidia_blog_agent.agents.workflow import run_ingestion_pipeline
+from nvidia_blog_agent.tools.http_fetcher import HttpHtmlFetcher, fetch_feed_html
+from nvidia_blog_agent.context.state_persistence import load_state, save_state
+
+# Load configuration
+config = load_config_from_env()
+
+# Create RAG clients (automatically selects HTTP or Vertex AI RAG)
+ingest_client, retrieve_client = create_rag_clients(config)
+
+# Create summarizer
+summarizer = GeminiSummarizer(config.gemini)
+
+# Fetch feed and run ingestion
+feed_html = await fetch_feed_html()
+state = load_state()
+existing_ids = set()  # Or load from state
+
+result = await run_ingestion_pipeline(
+    feed_html=feed_html,
+    existing_ids=existing_ids,
+    fetcher=HttpHtmlFetcher(),
+    summarizer=summarizer,
+    rag_client=ingest_client,
+)
+
+# Save state
+save_state(state)
+```
+
+#### QA Usage
+
+```python
+from nvidia_blog_agent.agents.qa_agent import QAAgent
+from nvidia_blog_agent.agents.gemini_qa_model import GeminiQaModel
+
+qa_model = GeminiQaModel(config.gemini)
+qa_agent = QAAgent(rag_client=retrieve_client, model=qa_model)
+
+answer, docs = await qa_agent.answer("What did NVIDIA say about RAG?", k=5)
+print(answer)
+print("Sources:", [d.title for d in docs])
+```
+
+See [VERTEX_RAG_SETUP.md](VERTEX_RAG_SETUP.md) for complete setup instructions.
 
 ## Project Structure
 
 ```
-nvidia_blog_agent/
-├── contracts/          # Data models (BlogPost, BlogSummary, etc.)
-├── tools/             # Discovery, scraping, summarization, RAG clients
-├── agents/            # Workflow orchestration, summarizer, QA agent
-├── context/           # Session state management and compaction
-├── eval/              # Evaluation harness
-├── config.py          # Configuration management
-├── rag_clients.py     # RAG client factory
-└── tests/             # Comprehensive test suite (182 tests)
+nvidia_blog_agent/                    # Project root
+├── nvidia_blog_agent/               # Python package (installable)
+│   ├── __init__.py
+│   ├── config.py                    # Configuration management
+│   ├── rag_clients.py               # RAG client factory
+│   ├── contracts/                   # Data models (BlogPost, BlogSummary, etc.)
+│   ├── tools/                       # Discovery, scraping, summarization, RAG clients
+│   │   └── http_fetcher.py          # HTTP HTML fetcher implementation
+│   ├── agents/                      # Workflow orchestration, summarizer, QA agent
+│   ├── context/                     # Session state management and compaction
+│   │   └── state_persistence.py     # State load/save helpers (local JSON or GCS)
+│   └── eval/                        # Evaluation harness
+├── scripts/                          # Runtime entrypoints
+│   ├── run_ingest.py                # Ingestion pipeline script
+│   └── run_qa.py                    # QA query script
+├── tests/                            # Comprehensive test suite (182 tests)
+├── pyproject.toml                   # Modern Python packaging configuration
+└── requirements.txt                  # Dependencies (for reference)
 ```
+
+**Package Structure:** The project follows standard Python packaging conventions. The `nvidia_blog_agent/` directory is the installable package, and all source code lives within it. The project root contains scripts, tests, and configuration files.
 
 ## Key Features
 
@@ -244,6 +295,7 @@ nvidia_blog_agent/
 - `GEMINI_LOCATION`: Gemini model location
 - `RAG_API_KEY`: API key for HTTP RAG (if required)
 - `RAG_SEARCH_ENGINE_NAME`: Vertex AI Search engine name (if querying directly)
+- `STATE_PATH`: Path to state file (local JSON or `gs://bucket/blob.json`). Defaults to `state.json`
 
 ## Contributing
 

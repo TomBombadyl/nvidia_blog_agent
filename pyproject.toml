@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nvidia-blog-agent"
+version = "0.1.0"
+description = "A modular system for discovering, processing, and querying NVIDIA tech blog content using RAG"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0,<3.0.0",
+    "httpx>=0.25.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=4.9.0",
+    "python-dateutil>=2.8.0",
+    "google-generativeai>=0.3.0",
+    "google-cloud-storage>=2.10.0",
+    "google-cloud-aiplatform>=1.38.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+adk = [
+    "google-genai-adk>=0.1.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nvidia_blog_agent*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.md", "*.txt"]
+
