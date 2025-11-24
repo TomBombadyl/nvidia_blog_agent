@@ -4,7 +4,7 @@ This module provides VertexRagRetrieveClient, which queries Vertex AI RAG Engine
 to retrieve relevant documents for question answering.
 """
 
-from typing import List, Optional
+from typing import List, Optional, Any
 from nvidia_blog_agent.contracts.blog_models import RetrievedDoc
 from nvidia_blog_agent.tools.rag_retrieve import RagRetrieveClient
 
@@ -43,7 +43,7 @@ class VertexRagRetrieveClient(RagRetrieveClient):
         project_id: str,
         location: str,
         corpus_id: str,
-        client: Optional[aiplatform.Client] = None,
+        client: Optional[Any] = None,
     ):
         """Initialize Vertex AI RAG retrieval client.
         
@@ -119,18 +119,30 @@ class VertexRagRetrieveClient(RagRetrieveClient):
         """Retrieve using Vertex AI RAG Engine REST API."""
         import httpx
         
-        # Construct the RAG Engine query endpoint
-        # Format: https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/ragCorpora/{corpus_id}:query
+        # Construct the RAG Engine retrieveContexts endpoint
+        # Format: https://{location}-aiplatform.googleapis.com/v1beta1/projects/{project}/locations/{location}:retrieveContexts
         endpoint = (
-            f"https://{self.location}-aiplatform.googleapis.com/v1/"
-            f"projects/{self.project_id}/locations/{self.location}/"
-            f"ragCorpora/{self.corpus_id}:query"
+            f"https://{self.location}-aiplatform.googleapis.com/v1beta1/"
+            f"projects/{self.project_id}/locations/{self.location}:retrieveContexts"
         )
         
-        # Build request payload
+        # Build corpus resource name
+        corpus_resource = (
+            f"projects/{self.project_id}/locations/{self.location}/"
+            f"ragCorpora/{self.corpus_id}"
+        )
+        
+        # Build request payload according to Vertex AI RAG API spec
         payload = {
-            "query": query,
-            "top_k": k,
+            "vertex_rag_store": {
+                "rag_resources": {
+                    "rag_corpus": corpus_resource
+                }
+            },
+            "query": {
+                "text": query,
+                "similarity_top_k": k
+            }
         }
         
         # Get credentials for authentication
@@ -162,22 +174,80 @@ class VertexRagRetrieveClient(RagRetrieveClient):
         # Map RAG Engine response to RetrievedDoc objects
         docs: List[RetrievedDoc] = []
         
-        # The response structure may vary; adapt based on actual API response
-        # Expected structure: {"contexts": [{"text": "...", "source_uri": "...", "score": 0.9}]}
-        contexts = result.get("contexts", [])
+        # The response structure from retrieveContexts API
+        # Actual structure: {"contexts": {"contexts": [{"text": "...", "sourceUri": "...", "distance": 0.9}]}}
+        # Note: API uses camelCase (sourceUri, distance) not snake_case
+        contexts_obj = result.get("contexts", {})
         
-        for item in contexts[:k]:
+        # Handle nested structure: contexts can be a dict with "contexts" key, or directly a list
+        if isinstance(contexts_obj, dict):
+            contexts = contexts_obj.get("contexts", [])
+        elif isinstance(contexts_obj, list):
+            contexts = contexts_obj
+        else:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Unexpected response format: contexts is {type(contexts_obj)}. Response: {result}")
+            return docs
+        
+        # Ensure contexts is a list
+        if not isinstance(contexts, list):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Unexpected response format: contexts is {type(contexts)}, not a list. Response: {result}")
+            return docs
+        
+        # Debug: log response structure if no contexts found
+        if not contexts:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"No contexts returned from RAG API. Response keys: {list(result.keys())}")
+            logger.debug(f"Full response: {result}")
+        
+        # Limit to k documents
+        contexts_to_process = contexts[:k] if len(contexts) > k else contexts
+        
+        for item in contexts_to_process:
+            # API uses camelCase: sourceUri, distance (not source_uri, score)
             text = item.get("text", "")
-            source_uri = item.get("source_uri", "")
-            score = item.get("score", 0.0)
+            source_uri = item.get("sourceUri", item.get("source_uri", ""))
+            # Distance is lower = better, so convert to score (higher = better)
+            distance = item.get("distance", 1.0)
+            score = max(0.0, min(1.0, 1.0 - distance)) if distance else 0.0
             
             # Extract metadata from source_uri or item metadata
             metadata = item.get("metadata", {})
             
-            # Try to extract blog_id, title, url from metadata or source_uri
+            # Extract blog_id, title, url from text content or metadata
+            # The text content has format: "Title: ...\nURL: https://...\n\nExecutive Summary:..."
+            import re
             blog_id = metadata.get("blog_id", "")
             title = metadata.get("title", "NVIDIA Blog Post")
-            url = metadata.get("url", source_uri)
+            url = metadata.get("url", "")
+            
+            # If URL not in metadata, extract from text content
+            if not url or url.startswith("gs://"):
+                # Look for "URL: https://..." pattern in text
+                url_match = re.search(r'URL:\s*(https?://[^\s\n]+)', text)
+                if url_match:
+                    url = url_match.group(1)
+                else:
+                    # Fallback to default blog URL
+                    url = "https://developer.nvidia.com/blog"
+            
+            # Extract title from text if not in metadata
+            if title == "NVIDIA Blog Post":
+                title_match = re.search(r'Title:\s*([^\n]+)', text)
+                if title_match:
+                    title = title_match.group(1).strip()
+            
+            # Extract blog_id from source_uri filename if not in metadata
+            if not blog_id and source_uri:
+                # source_uri is like: gs://bucket/blog_id.txt
+                import os
+                filename = os.path.basename(source_uri)
+                if filename.endswith('.txt'):
+                    blog_id = filename[:-4]  # Remove .txt extension
             
             docs.append(
                 RetrievedDoc(

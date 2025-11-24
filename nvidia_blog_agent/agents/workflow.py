@@ -17,12 +17,15 @@ making the workflow fully testable and adaptable to different implementations.
 """
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from typing import List, Iterable, Protocol, Optional
 from nvidia_blog_agent.contracts.blog_models import BlogPost, RawBlogContent, BlogSummary
 from nvidia_blog_agent.tools.discovery import discover_posts_from_feed, diff_new_posts
 from nvidia_blog_agent.tools.scraper import HtmlFetcher, fetch_and_parse_blog
 from nvidia_blog_agent.tools.rag_ingest import RagIngestClient
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -113,28 +116,42 @@ async def fetch_raw_contents_for_posts(
     
     This function processes multiple posts concurrently using asyncio.gather,
     making it efficient for batch processing. Each post is fetched and parsed
-    independently, so failures in one post don't affect others.
+    independently. If a post fails to fetch (e.g., 403 Forbidden, 404 Not Found),
+    it is skipped and logged, but processing continues for other posts.
     
     Args:
         posts: List of BlogPost objects to fetch and parse.
         fetcher: HtmlFetcher implementation to use for fetching HTML.
     
     Returns:
-        List of RawBlogContent objects, one per input BlogPost.
-        Order matches the input posts list.
+        List of RawBlogContent objects, one per successfully fetched BlogPost.
+        May be shorter than the input posts list if some posts failed to fetch.
     
     Example:
         >>> posts = [BlogPost(id="1", url="https://example.com/1", title="Post 1")]
         >>> fetcher = SomeHtmlFetcher()
         >>> contents = await fetch_raw_contents_for_posts(posts, fetcher)
-        >>> len(contents) == len(posts)
+        >>> len(contents) <= len(posts)
         True
     """
     if not posts:
         return []
     
-    tasks = [fetch_and_parse_blog(post, fetcher) for post in posts]
-    return await asyncio.gather(*tasks)
+    async def fetch_with_error_handling(post: BlogPost) -> Optional[RawBlogContent]:
+        """Fetch a single post, returning None if it fails."""
+        try:
+            return await fetch_and_parse_blog(post, fetcher)
+        except Exception as e:
+            logger.warning(
+                f"Failed to fetch blog post '{post.title}' ({post.url}): {e}. Skipping."
+            )
+            return None
+    
+    tasks = [fetch_with_error_handling(post) for post in posts]
+    results = await asyncio.gather(*tasks)
+    
+    # Filter out None results (failed fetches)
+    return [content for content in results if content is not None]
 
 
 async def summarize_raw_contents(

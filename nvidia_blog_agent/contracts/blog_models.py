@@ -44,6 +44,10 @@ class BlogPost(BaseModel):
         default="nvidia_tech_blog",
         description="Source identifier for the blog"
     )
+    content: Optional[str] = Field(
+        None,
+        description="Full HTML content from RSS feed (if available). When present, avoids fetching individual post pages."
+    )
 
     @field_validator("id")
     @classmethod
@@ -98,6 +102,10 @@ class RawBlogContent(BaseModel):
     sections: List[str] = Field(
         default_factory=list,
         description="Logical sections of the blog post (headings, paragraphs, etc.)"
+    )
+    categories: List[str] = Field(
+        default_factory=list,
+        description="Categories or tags associated with the blog post (from discovery phase)"
     )
 
     @field_validator("blog_id", "title", "text")
@@ -196,10 +204,21 @@ class BlogSummary(BaseModel):
             ])
         
         if self.keywords:
-            parts.extend([
-                "",
-                f"Keywords: {', '.join(self.keywords)}"
-            ])
+            # Separate categories (if they look like categories) from other keywords
+            # Categories are typically longer, multi-word phrases like "Agentic AI / Generative AI"
+            categories = [kw for kw in self.keywords if "/" in kw or len(kw.split()) > 2]
+            other_keywords = [kw for kw in self.keywords if kw not in categories]
+            
+            if categories:
+                parts.extend([
+                    "",
+                    f"Categories: {', '.join(categories)}"
+                ])
+            if other_keywords:
+                parts.extend([
+                    "",
+                    f"Keywords: {', '.join(other_keywords)}"
+                ])
         
         if self.published_at:
             parts.insert(2, f"Published: {self.published_at.isoformat()}")

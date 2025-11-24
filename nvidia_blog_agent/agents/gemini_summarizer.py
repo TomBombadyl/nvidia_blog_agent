@@ -4,6 +4,7 @@ This module provides GeminiSummarizer, which uses Google's Gemini models
 to summarize RawBlogContent objects into BlogSummary objects.
 """
 
+import os
 from typing import List
 from nvidia_blog_agent.agents.workflow import SummarizerLike
 from nvidia_blog_agent.contracts.blog_models import RawBlogContent, BlogSummary
@@ -61,7 +62,16 @@ class GeminiSummarizer(SummarizerLike):
         else:
             # Create client based on what's available
             if ADK_AVAILABLE:
-                self._client = GenaiClient()
+                # Get project and location for Vertex AI
+                project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT")
+                location = gemini_cfg.location
+                
+                if project and location:
+                    # Use Vertex AI (requires project and location)
+                    self._client = GenaiClient(vertexai=True, project=project, location=location)
+                else:
+                    # Fall back to Google AI API (requires API key)
+                    self._client = GenaiClient()
                 self._use_adk = True
             elif GENAI_AVAILABLE:
                 genai.configure()  # Uses GOOGLE_APPLICATION_CREDENTIALS

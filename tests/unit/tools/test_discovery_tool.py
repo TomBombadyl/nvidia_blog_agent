@@ -338,3 +338,121 @@ class TestDiscoverPostsFromFeed:
         assert len(posts) == 1
         assert posts[0].title == "Article Post"
 
+    def test_atom_feed_parsing(self):
+        """Test parsing Atom feed format."""
+        atom_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <title>Test Post</title>
+                <link href="https://developer.nvidia.com/blog/test-post"/>
+                <published>2025-01-15T10:00:00Z</published>
+                <category term="AI"/>
+                <content type="html"><![CDATA[<p>This is the full post content.</p>]]></content>
+            </entry>
+        </feed>
+        '''
+        
+        posts = discover_posts_from_feed(atom_xml)
+        
+        assert len(posts) == 1
+        assert posts[0].title == "Test Post"
+        assert str(posts[0].url) == "https://developer.nvidia.com/blog/test-post"
+        assert posts[0].published_at == datetime(2025, 1, 15, 10, 0)
+        assert "AI" in posts[0].tags
+        assert posts[0].content is not None
+        assert "full post content" in posts[0].content
+
+    def test_rss_feed_parsing(self):
+        """Test parsing RSS 2.0 feed format."""
+        rss_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>RSS Test Post</title>
+                    <link>https://developer.nvidia.com/blog/rss-test</link>
+                    <pubDate>Mon, 15 Jan 2025 10:00:00 GMT</pubDate>
+                    <category>CUDA</category>
+                    <content:encoded xmlns:content="http://purl.org/rss/1.0/modules/content/">
+                        <![CDATA[<p>Full RSS post content here.</p>]]>
+                    </content:encoded>
+                </item>
+            </channel>
+        </rss>
+        '''
+        
+        posts = discover_posts_from_feed(rss_xml)
+        
+        assert len(posts) == 1
+        assert posts[0].title == "RSS Test Post"
+        assert str(posts[0].url) == "https://developer.nvidia.com/blog/rss-test"
+        assert "CUDA" in posts[0].tags
+        assert posts[0].content is not None
+        assert "RSS post content" in posts[0].content
+
+    def test_atom_feed_without_content(self):
+        """Test Atom feed parsing when content is not available."""
+        atom_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <title>Post Without Content</title>
+                <link href="https://developer.nvidia.com/blog/no-content"/>
+                <published>2025-01-15T10:00:00Z</published>
+            </entry>
+        </feed>
+        '''
+        
+        posts = discover_posts_from_feed(atom_xml)
+        
+        assert len(posts) == 1
+        assert posts[0].title == "Post Without Content"
+        assert posts[0].content is None  # Content should be None when not in feed
+
+    def test_atom_feed_multiple_entries(self):
+        """Test parsing Atom feed with multiple entries."""
+        atom_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom">
+            <entry>
+                <title>First Post</title>
+                <link href="https://developer.nvidia.com/blog/first"/>
+                <content type="html"><![CDATA[<p>First content</p>]]></content>
+            </entry>
+            <entry>
+                <title>Second Post</title>
+                <link href="https://developer.nvidia.com/blog/second"/>
+                <content type="html"><![CDATA[<p>Second content</p>]]></content>
+            </entry>
+        </feed>
+        '''
+        
+        posts = discover_posts_from_feed(atom_xml)
+        
+        assert len(posts) == 2
+        assert posts[0].title == "First Post"
+        assert posts[1].title == "Second Post"
+        assert posts[0].content is not None
+        assert posts[1].content is not None
+        assert "First content" in posts[0].content
+        assert "Second content" in posts[1].content
+
+    def test_rss_feed_fallback_to_description(self):
+        """Test RSS feed falls back to description when content:encoded is missing."""
+        rss_xml = '''<?xml version="1.0" encoding="UTF-8"?>
+        <rss version="2.0">
+            <channel>
+                <item>
+                    <title>RSS Post</title>
+                    <link>https://developer.nvidia.com/blog/rss</link>
+                    <description><![CDATA[<p>Description content</p>]]></description>
+                </item>
+            </channel>
+        </rss>
+        '''
+        
+        posts = discover_posts_from_feed(rss_xml)
+        
+        assert len(posts) == 1
+        assert posts[0].title == "RSS Post"
+        # Description should be used as content fallback
+        assert posts[0].content is not None
+        assert "Description content" in posts[0].content
+
