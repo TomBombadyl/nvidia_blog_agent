@@ -43,7 +43,7 @@ Added to `.gitignore`:
 #### Untracked Files (New):
 - `.dockerignore` - ✅ Safe to commit
 - `Dockerfile` - ✅ Safe to commit
-- `SETUP_ENV.md` - ✅ Safe to commit
+- `SETUP_WALKTHROUGH.md` - ✅ Safe to commit (consolidated from SETUP_ENV.md)
 - `scripts/kaggle_notebook_example.py` - ✅ Safe to commit (uses placeholder URL)
 - `scripts/run_eval_vertex.py` - ✅ Safe to commit
 - `scripts/test_rss_feed.py` - ✅ Safe to commit
@@ -61,11 +61,10 @@ Added to `.gitignore`:
 
 ### ⚠️ Notes
 
-1. **env.template**: File was deleted. SETUP_ENV.md contains template content inline, which is acceptable.
-
-2. **Test Values**: Test files use `secret123` as dummy API keys - this is acceptable for testing purposes.
-
-3. **Placeholder URLs**: Example files use placeholder URLs (e.g., `https://nvidia-blog-agent-xxxxx-uc.a.run.app`) - this is acceptable.
+1. **env.template**: File was deleted. Environment variable templates are now documented inline in SETUP_WALKTHROUGH.md.
+2. **SETUP_ENV.md**: File was deleted and consolidated into SETUP_WALKTHROUGH.md to reduce redundancy.
+3. **Test Values**: Test files use `secret123` as dummy API keys - this is acceptable for testing purposes.
+4. **Placeholder URLs**: Example files use placeholder URLs (e.g., `https://nvidia-blog-agent-xxxxx-uc.a.run.app`) - this is acceptable.
 
 ### ✅ Ready for Commit
 

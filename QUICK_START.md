@@ -21,12 +21,12 @@ pip install "fastapi>=0.104.0" "uvicorn[standard]>=0.24.0"
 
 ### 2. Configure Environment
 
-Copy `env.template` to `.env` and set:
+Create a `.env` file and set:
 - `USE_VERTEX_RAG=true`
 - `RAG_CORPUS_ID=your_corpus_id`
 - `VERTEX_LOCATION=us-east5`
 - `RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs`
-- `GEMINI_MODEL_NAME=gemini-1.5-pro`
+- `GEMINI_MODEL_NAME=gemini-2.0-flash-001`
 - `GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json`
 
 ### 3. Test CLI Scripts
@@ -97,7 +97,7 @@ gcloud run deploy nvidia-blog-agent \
     --set-env-vars "VERTEX_LOCATION=us-east5" \
     --set-env-vars "RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs" \
     --set-env-vars "STATE_PATH=gs://nvidia-blog-agent-state/state.json" \
-    --set-env-vars "GEMINI_MODEL_NAME=gemini-1.5-pro" \
+    --set-env-vars "GEMINI_MODEL_NAME=gemini-2.0-flash-001" \
     --set-env-vars "GEMINI_LOCATION=us-east5"
 ```
 

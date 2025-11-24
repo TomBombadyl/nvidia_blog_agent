@@ -8,9 +8,9 @@ This system provides an end-to-end pipeline that:
 
 1. **Discovers** new NVIDIA technical blog posts from RSS/Atom feed or HTML
 2. **Scrapes** and parses blog post content into structured data (uses RSS feed content when available)
-3. **Summarizes** posts using Gemini 1.5 Pro
+3. **Summarizes** posts using Gemini 2.0 Flash
 4. **Ingests** summaries into a RAG backend (HTTP-based or Vertex AI RAG Engine)
-5. **Answers questions** about NVIDIA blogs using RAG retrieval + Gemini 1.5 Pro
+5. **Answers questions** about NVIDIA blogs using RAG retrieval + Gemini 2.0 Flash
 
 ## Architecture
 
@@ -48,8 +48,8 @@ The system automatically detects which backend to use based on environment varia
 - **Chunk Overlap**: 256 tokens (configured in Vertex AI Search data store)
 - **Hybrid Search**: Enabled by default (combines vector similarity + keyword/BM25)
 - **Reranking**: Available via Vertex AI ranking API
-- **QA Model**: Gemini 1.5 Pro
-- **Summarization Model**: Gemini 1.5 Pro
+- **QA Model**: Gemini 2.0 Flash
+- **Summarization Model**: Gemini 2.0 Flash
 - **Retrieval**: Recommended `top_k=8-10` for initial retrieval, top 4-6 after reranking (configurable)
 - **Document Strategy**: One document per blog post
 
@@ -84,19 +84,15 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 
 ### Configuration
 
-**Quick Start**: Copy `env.template` to `.env` and fill in your values:
-```bash
-cp env.template .env
-# Edit .env with your actual values
-```
+**Quick Start**: Create a `.env` file with your configuration values, or set environment variables directly in your shell.
 
-Or set environment variables directly in your shell.
+See [SETUP_WALKTHROUGH.md](SETUP_WALKTHROUGH.md) for a complete step-by-step setup guide.
 
 #### For Vertex AI RAG (Recommended)
 
 ```bash
 # Gemini Configuration
-export GEMINI_MODEL_NAME="gemini-1.5-pro"
+export GEMINI_MODEL_NAME="gemini-2.0-flash-001"
 export GEMINI_LOCATION="us-east5"
 
 # Vertex AI RAG Configuration
@@ -124,7 +120,7 @@ See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for complete setup and de
 
 ```bash
 # Gemini Configuration
-export GEMINI_MODEL_NAME="gemini-1.5-pro"
+export GEMINI_MODEL_NAME="gemini-2.0-flash-001"
 export GEMINI_LOCATION="us-east5"
 
 # HTTP RAG Configuration
@@ -266,7 +262,7 @@ python scripts/run_qa.py "Question here" --verbose
 The script will:
 1. Load configuration and create RAG retrieve client (automatically selects Vertex RAG if `USE_VERTEX_RAG=true`)
 2. Retrieve relevant documents from the RAG backend (recommended: top 8-10 documents initially, then top 4-6 after reranking)
-3. Generate an answer using Gemini 1.5 Pro based on retrieved documents
+3. Generate an answer using Gemini 2.0 Flash based on retrieved documents
 4. Display the answer and source document titles/URLs
 
 **Note**: The `--top-k` parameter is configurable; 8-10 is recommended for optimal retrieval quality.
@@ -488,7 +484,7 @@ nvidia_blog_agent/                    # Project root
 ### Required for All Modes
 
 - `GOOGLE_APPLICATION_CREDENTIALS`: Path to service account JSON
-- `GEMINI_MODEL_NAME`: Gemini model name (e.g., "gemini-1.5-pro")
+- `GEMINI_MODEL_NAME`: Gemini model name (e.g., "gemini-2.0-flash-001")
 - `GOOGLE_CLOUD_PROJECT`: GCP project ID
 
 ### HTTP RAG Mode

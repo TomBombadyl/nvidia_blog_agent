@@ -11,8 +11,9 @@ This guide helps you test the FastAPI service locally before deploying to Cloud 
    ```
 
 2. **Set up environment variables**:
-   - Copy `env.template` to `.env` and fill in your values
+   - Create a `.env` file with your configuration values
    - Or set environment variables in your shell
+   - See [SETUP_WALKTHROUGH.md](SETUP_WALKTHROUGH.md) for complete setup instructions
    - Required for Vertex AI RAG:
      - `GOOGLE_CLOUD_PROJECT`
      - `USE_VERTEX_RAG=true`
@@ -43,7 +44,7 @@ INFO:     Started reloader process
 INFO:     Started server process
 INFO:     Waiting for application startup.
 INFO:     Initializing NVIDIA Blog Agent service...
-INFO:     Using Gemini model: gemini-1.5-pro
+INFO:     Using Gemini model: gemini-2.0-flash-001
 INFO:     Using RAG backend: Vertex AI
 INFO:     State path: state.json
 INFO:     ✅ Service initialized successfully
@@ -154,7 +155,7 @@ Expected response:
 
 **Error**: `KeyError: "RAG_CORPUS_ID environment variable is required"`
 
-**Solution**: Make sure all required environment variables are set. Check `env.template` for the complete list.
+**Solution**: Make sure all required environment variables are set. See [SETUP_WALKTHROUGH.md](SETUP_WALKTHROUGH.md) for the complete list.
 
 **Error**: `ImportError: Vertex AI RAG dependencies are required`
 

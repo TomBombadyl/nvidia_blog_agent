@@ -39,7 +39,7 @@ The system uses **Vertex AI RAG Engine + Vertex AI Search + GCS** as the primary
   - The `k` parameter is configurable; 8-10 is the recommended range for optimal performance
 - **QA Input**: Top 4-6 documents (after reranking) passed to Gemini for answer generation (recommended range)
   - The actual number of documents used depends on the `k` parameter passed to the QA agent
-- **QA LLM**: Gemini 1.5 Pro
+- **QA LLM**: Gemini 2.0 Flash
 - **QA Temperature**: Uses default Gemini temperature behavior (typically ~0.2 for factual responses)
   - Note: Temperature is not explicitly set in code; Gemini uses its default behavior optimized for factual responses
 
@@ -119,9 +119,9 @@ The system automatically detects which RAG backend to use:
 2. **Scraping**: Use feed content directly when available, or fetch and parse individual blog post pages as fallback
    - **Smart Content Usage**: If RSS feed includes content, uses it directly without HTTP requests
    - **Fallback Fetching**: Only fetches individual pages when feed content is not available
-3. **Summarization**: Generate summaries using Gemini 1.5 Pro
+3. **Summarization**: Generate summaries using Gemini 2.0 Flash
 4. **Ingestion**: Write documents to RAG backend using `run_ingestion_pipeline()` (GCS for Vertex RAG)
-5. **QA**: Retrieve relevant documents and generate grounded answers using Gemini 1.5 Pro
+5. **QA**: Retrieve relevant documents and generate grounded answers using Gemini 2.0 Flash
 
 ### RSS/Atom Feed Implementation
 
@@ -218,7 +218,7 @@ Copy the summary and key results from the output, or paste from the JSON output 
 - Corpus ID: `[corpus_id]`
 - Location: `[vertex_location]`
 - Embedding Model: `text-embedding-005`
-- Gemini Model: `gemini-1.5-pro`
+- Gemini Model: `gemini-2.0-flash-001`
 - Retrieval: `top_k=8-10` (recommended), reranking enabled
 
 **Summary**:

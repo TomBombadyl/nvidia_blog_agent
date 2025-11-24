@@ -146,7 +146,7 @@ export RAG_DOCS_BUCKET="gs://nvidia-blog-rag-docs"
 export RAG_SEARCH_ENGINE_NAME="projects/nvidia-blog-agent/locations/us-east5/collections/default_collection/dataStores/nvidia-blog-docs/servingConfigs/default_search"
 
 # Gemini Configuration
-export GEMINI_MODEL_NAME="gemini-1.5-pro"
+export GEMINI_MODEL_NAME="gemini-2.0-flash-001"
 export GEMINI_LOCATION="us-east5"
 
 # GCP Project
@@ -354,7 +354,7 @@ gcloud run deploy nvidia-blog-agent \
     --set-env-vars "VERTEX_LOCATION=us-east5" \
     --set-env-vars "RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs" \
     --set-env-vars "STATE_PATH=gs://nvidia-blog-agent-state/state.json" \
-    --set-env-vars "GEMINI_MODEL_NAME=gemini-1.5-pro" \
+    --set-env-vars "GEMINI_MODEL_NAME=gemini-2.0-flash-001" \
     --set-env-vars "GEMINI_LOCATION=us-east5" \
     --project $PROJECT_ID
 ```
@@ -410,7 +410,7 @@ curl -X POST $SERVICE_URL/ingest \
 | `VERTEX_LOCATION` | Vertex AI region | `us-east5` (Columbus) |
 | `RAG_DOCS_BUCKET` | GCS bucket for documents | `gs://nvidia-blog-rag-docs` |
 | `STATE_PATH` | State persistence path | `gs://nvidia-blog-agent-state/state.json` |
-| `GEMINI_MODEL_NAME` | Gemini model name | `gemini-1.5-pro` |
+| `GEMINI_MODEL_NAME` | Gemini model name | `gemini-2.0-flash-001` |
 | `GEMINI_LOCATION` | Gemini region | `us-east5` (Columbus) |
 
 ### Optional Environment Variables
@@ -553,7 +553,7 @@ gcloud run deploy nvidia-blog-agent \
     --set-env-vars "VERTEX_LOCATION=us-east5" \
     --set-env-vars "RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs" \
     --set-env-vars "STATE_PATH=gs://nvidia-blog-agent-state/state.json" \
-    --set-env-vars "GEMINI_MODEL_NAME=gemini-1.5-pro" \
+    --set-env-vars "GEMINI_MODEL_NAME=gemini-2.0-flash-001" \
     --set-env-vars "GEMINI_LOCATION=us-east5" \
   --set-secrets "INGEST_API_KEY=ingest-api-key:latest" \
   --project $PROJECT_ID
