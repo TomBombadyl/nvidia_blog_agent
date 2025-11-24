@@ -16,25 +16,30 @@
 
 **Current Test Status:**
 
-* ✅ **182 tests passing** (Phases 1–9)
+* ✅ **182 tests passing** (Phases 1–9 + Vertex AI RAG Integration)
 
 ---
 
 ## 1. High-Level System Overview
 
-You now have a full, modular system:
+You now have a full, modular system with support for both HTTP-based and Vertex AI RAG backends:
 
 1. **Discovery** – parses NVIDIA blog feed HTML → BlogPosts.
 2. **Scraping** – fetches HTML via HtmlFetcher → RawBlogContent.
-3. **Summarization** – SummarizerAgent (LLM) → BlogSummary.
-4. **RAG Ingestion** – RagIngestClient HTTPs summaries into a RAG backend.
-5. **RAG Retrieval** – RagRetrieveClient HTTPs queries → RetrievedDocs.
-6. **QA** – QAAgent uses retrieval + LLM to answer questions, grounded in docs.
+3. **Summarization** – SummarizerAgent (Gemini LLM) → BlogSummary.
+4. **RAG Ingestion** – Supports two paths:
+   - **HTTP RAG**: RagIngestClient HTTPs summaries into a custom RAG backend
+   - **Vertex AI RAG**: GcsRagIngestClient writes summaries to GCS for Vertex AI Search/RAG Engine
+5. **RAG Retrieval** – Supports two paths:
+   - **HTTP RAG**: RagRetrieveClient HTTPs queries → RetrievedDocs
+   - **Vertex AI RAG**: VertexRagRetrieveClient queries Vertex AI RAG Engine → RetrievedDocs
+6. **QA** – QAAgent uses retrieval + Gemini LLM to answer questions, grounded in docs.
 7. **Workflow Orchestration** – run_ingestion_pipeline wires 1–4 into one async pipeline.
 8. **Session/State Helpers** – read/write existing IDs, last results, history, with compaction.
 9. **Evaluation & E2E** – eval harness + E2E smoke tests validate ingestion→QA end-to-end.
+10. **Configuration & Client Wiring** – Centralized config with automatic backend detection.
 
-Everything is async, dependency-injected, fully stub-able, and covered by tests.
+Everything is async, dependency-injected, fully stub-able, and covered by tests. The system automatically detects whether to use HTTP-based or Vertex AI RAG based on environment configuration.
 
 ---
 
@@ -55,12 +60,16 @@ nvidia_blog_agent/
     summarization.py
     rag_ingest.py
     rag_retrieve.py
+    gcs_rag_ingest.py        # Vertex AI RAG: GCS ingestion
+    vertex_rag_retrieve.py   # Vertex AI RAG: RAG Engine retrieval
 
   agents/
     __init__.py
     summarizer_agent.py
     qa_agent.py
     workflow.py
+    gemini_summarizer.py     # Real Gemini SummarizerLike implementation
+    gemini_qa_model.py       # Real Gemini QaModelLike implementation
 
   context/
     __init__.py
@@ -70,6 +79,9 @@ nvidia_blog_agent/
   eval/
     __init__.py
     harness.py
+
+  config.py                  # Centralized configuration
+  rag_clients.py             # RAG client factory (HTTP + Vertex AI)
 
 tests/
   __init__.py
@@ -245,6 +257,77 @@ You now have unit, workflow, context, and E2E tests confirming the whole system 
 
 ---
 
+### Phase 10 – Configuration & Real Client Wiring ✅
+
+**config.py:**
+
+* GeminiConfig(model_name, location)
+* RagConfig with support for both HTTP and Vertex AI RAG:
+  * HTTP RAG: base_url, uuid, api_key
+  * Vertex AI RAG: use_vertex_rag, vertex_location, docs_bucket, search_engine_name
+* AppConfig(gemini, rag)
+* load_config_from_env() – automatically detects HTTP vs Vertex AI RAG mode
+
+**rag_clients.py:**
+
+* create_rag_clients(config) – factory function that:
+  * Returns HttpRagIngestClient + HttpRagRetrieveClient for HTTP RAG
+  * Returns GcsRagIngestClient + VertexRagRetrieveClient for Vertex AI RAG
+  * Automatically selects based on USE_VERTEX_RAG environment variable
+
+**agents/gemini_summarizer.py:**
+
+* GeminiSummarizer(SummarizerLike):
+  * Uses build_summary_prompt + Gemini (google-generativeai or ADK)
+  * Parses JSON response → BlogSummary
+  * Supports both google-generativeai and google-genai-adk libraries
+
+**agents/gemini_qa_model.py:**
+
+* GeminiQaModel(QaModelLike):
+  * Builds Q&A prompt from RetrievedDoc snippets
+  * Uses Gemini to generate grounded answers
+  * Supports both google-generativeai and google-genai-adk libraries
+
+---
+
+### Phase 11 – Vertex AI RAG Integration ✅
+
+**tools/gcs_rag_ingest.py:**
+
+* GcsRagIngestClient(RagIngestClient):
+  * Uses google-cloud-storage
+  * Writes BlogSummary.to_rag_document() → GCS bucket as text files
+  * Writes metadata JSON files alongside documents
+  * Format: `{bucket}/{prefix}{blog_id}.txt` and `{blog_id}.metadata.json`
+
+**tools/vertex_rag_retrieve.py:**
+
+* VertexRagRetrieveClient(RagRetrieveClient):
+  * Queries Vertex AI RAG Engine REST API
+  * Maps RAG Engine responses → RetrievedDoc objects
+  * Supports both ADK and direct REST API paths
+  * Handles authentication via Google Application Default Credentials
+
+**VERTEX_RAG_SETUP.md:**
+
+* Complete setup guide for Vertex AI RAG:
+  * API enablement
+  * GCS bucket creation
+  * Vertex AI Search data store setup
+  * Vertex AI RAG Engine corpus configuration
+  * Environment variable configuration
+  * Usage examples and troubleshooting
+
+**Backward Compatibility:**
+
+* HTTP RAG path remains fully functional
+* All 182 tests still pass
+* Can switch between backends with single environment variable
+* No code changes required to switch backends
+
+---
+
 ## 4. Testing & Quality Summary
 
 | Area                | Test File                        | Count   | Status |
@@ -270,9 +353,113 @@ All tests are:
 
 ---
 
-## 5. What You Need to Do Next (Practical Setup Checklist)
+## 5. Configuration & Real Client Wiring
 
-Now: what do you actually need to configure to run this against real NVIDIA blogs + real models + a real-ish RAG backend?
+### 5.1 Configuration Module
+
+**File:** `config.py`
+
+The configuration module centralizes all runtime settings:
+
+* **GeminiConfig**: Model name and location for Gemini/LLM access
+* **RagConfig**: Supports both HTTP-based and Vertex AI RAG backends
+* **AppConfig**: Container for all configuration
+* **load_config_from_env()**: Loads configuration from environment variables
+
+**Environment Variables:**
+
+For HTTP-based RAG:
+```bash
+export RAG_BASE_URL="https://your-rag-service.run.app"
+export RAG_UUID="corpus-id"
+export RAG_API_KEY="optional-api-key"
+```
+
+For Vertex AI RAG:
+```bash
+export USE_VERTEX_RAG="true"
+export RAG_CORPUS_ID="your-corpus-id"
+export VERTEX_LOCATION="us-central1"
+export RAG_DOCS_BUCKET="gs://nvidia-blog-rag-docs"
+```
+
+### 5.2 RAG Client Factory
+
+**File:** `rag_clients.py`
+
+The `create_rag_clients()` function automatically creates the appropriate clients:
+
+* **HTTP Mode**: Returns `HttpRagIngestClient` + `HttpRagRetrieveClient`
+* **Vertex AI Mode**: Returns `GcsRagIngestClient` + `VertexRagRetrieveClient`
+
+No code changes needed - just set environment variables!
+
+### 5.3 Gemini Implementations
+
+**Files:** `agents/gemini_summarizer.py`, `agents/gemini_qa_model.py`
+
+Real Gemini implementations of the protocol interfaces:
+
+* **GeminiSummarizer**: Implements `SummarizerLike` using Gemini models
+* **GeminiQaModel**: Implements `QaModelLike` using Gemini models
+
+Both support:
+* `google-generativeai` library (standard)
+* `google-genai-adk` library (ADK integration)
+
+Automatically detects which library is available and uses it.
+
+---
+
+## 6. Vertex AI RAG Integration
+
+### 6.1 Architecture
+
+```
+BlogSummary → GCS Bucket → Vertex AI Search → Vertex AI RAG Engine → QAAgent
+```
+
+1. **Ingestion**: `GcsRagIngestClient` writes summaries to GCS
+2. **Indexing**: Vertex AI Search automatically ingests from GCS
+3. **Retrieval**: `VertexRagRetrieveClient` queries RAG Engine
+4. **QA**: QAAgent uses retrieved docs with Gemini for answers
+
+### 6.2 GCS Ingestion Client
+
+**File:** `tools/gcs_rag_ingest.py`
+
+* Writes `BlogSummary.to_rag_document()` as text files to GCS
+* Writes metadata JSON files for Vertex AI Search
+* Uses `google-cloud-storage` library
+* Format: `{bucket}/{prefix}{blog_id}.txt` and `{blog_id}.metadata.json`
+
+### 6.3 Vertex RAG Retrieval Client
+
+**File:** `tools/vertex_rag_retrieve.py`
+
+* Queries Vertex AI RAG Engine REST API
+* Maps responses to `RetrievedDoc` objects
+* Handles authentication via Application Default Credentials
+* Supports both ADK and direct REST API paths
+
+### 6.4 Setup Guide
+
+**File:** `VERTEX_RAG_SETUP.md`
+
+Complete step-by-step guide covering:
+* API enablement
+* GCS bucket creation
+* Vertex AI Search data store setup
+* Vertex AI RAG Engine corpus configuration
+* Environment variable setup
+* Usage examples
+* Troubleshooting
+
+---
+
+## 7. What You Need to Do Next (Practical Setup Checklist)
+
+Now: what do you actually need to configure to run this against real NVIDIA blogs + real models + a real RAG backend?
 
 Below is a pragmatic checklist broken into layers: local dev, GCP/RAG, and (optional) Cloud Run + MCP integration.
 
@@ -321,58 +508,86 @@ You don't have to wire this immediately for the capstone if you demonstrate usin
 
 ---
 
-### 5.3 RAG Backend Setup
+### 7.3 RAG Backend Setup
 
-Your code already assumes a generic HTTP RAG backend with:
+You now have **two options** for RAG backends:
+
+#### Option A: HTTP-Based RAG Backend
+
+Your code supports a generic HTTP RAG backend with:
 
 * POST `{base_url}/add_doc` for ingestion.
 * POST `{base_url}/query` for retrieval.
 
-You need to pick/stand up one of:
+You can use:
 
 * NVIDIA Context-Aware RAG running as a service (e.g., Docker → Cloud Run).
 * Your own simple RAG service (e.g., Milvus + a small Flask/FastAPI app).
-* A stub in-memory RAG (like InMemoryRag from tests) if you just want a demo.
+* Any HTTP-based RAG service matching the expected API.
 
-For a production-ish demo, I'd lean toward:
-
-* Run CA-RAG or a simple RAG service in Cloud Run.
-* Expose `/add_doc` and `/query` endpoints that match the payload shapes your clients expect.
-
-Once that service exists, you must provide:
-
-* `RAG_BASE_URL` – e.g. `https://my-rag-service-abc.run.app`.
-* `RAG_UUID` – corpus identifier (string).
-* `RAG_API_KEY` – if your RAG service requires auth.
-
-These map directly to your constructors:
-
-```python
-from nvidia_blog_agent.tools.rag_ingest import HttpRagIngestClient
-from nvidia_blog_agent.tools.rag_retrieve import HttpRagRetrieveClient
-
-ingest_client = HttpRagIngestClient(
-    base_url=os.environ["RAG_BASE_URL"],
-    uuid=os.environ["RAG_UUID"],
-    api_key=os.getenv("RAG_API_KEY"),
-)
-
-retrieve_client = HttpRagRetrieveClient(
-    base_url=os.environ["RAG_BASE_URL"],
-    uuid=os.environ["RAG_UUID"],
-    api_key=os.getenv("RAG_API_KEY"),
-)
+**Configuration:**
+```bash
+export RAG_BASE_URL="https://my-rag-service-abc.run.app"
+export RAG_UUID="corpus-id"
+export RAG_API_KEY="optional-api-key"
 ```
 
-**So action items for you:**
+**Usage:**
+```python
+from nvidia_blog_agent.config import load_config_from_env
+from nvidia_blog_agent.rag_clients import create_rag_clients
 
-1. Decide which RAG backend you'll use (NVIDIA CA-RAG vs custom).
-2. Deploy it or run locally.
-3. Capture `RAG_BASE_URL`, `RAG_UUID`, (optionally `RAG_API_KEY`) and set them as env vars or config.
+config = load_config_from_env()
+ingest_client, retrieve_client = create_rag_clients(config)
+# Automatically uses HttpRagIngestClient + HttpRagRetrieveClient
+```
+
+#### Option B: Vertex AI RAG Engine (Recommended)
+
+Use Google's managed Vertex AI RAG Engine:
+
+* **Ingestion**: Writes to GCS, Vertex AI Search ingests automatically
+* **Retrieval**: Queries Vertex AI RAG Engine API
+* **Benefits**: No infrastructure to manage, automatic embeddings/chunking
+
+**Configuration:**
+```bash
+export USE_VERTEX_RAG="true"
+export RAG_CORPUS_ID="your-corpus-id"
+export VERTEX_LOCATION="us-central1"
+export RAG_DOCS_BUCKET="gs://nvidia-blog-rag-docs"
+```
+
+**Setup Steps:**
+1. Enable APIs: `aiplatform.googleapis.com`, `discoveryengine.googleapis.com`
+2. Create GCS bucket: `gs://nvidia-blog-rag-docs`
+3. Create Vertex AI Search data store pointing to bucket
+4. Create Vertex AI RAG Engine corpus connected to Search
+5. Set environment variables as shown above
+
+See `VERTEX_RAG_SETUP.md` for complete setup instructions.
+
+**Usage:**
+```python
+from nvidia_blog_agent.config import load_config_from_env
+from nvidia_blog_agent.rag_clients import create_rag_clients
+
+config = load_config_from_env()
+ingest_client, retrieve_client = create_rag_clients(config)
+# Automatically uses GcsRagIngestClient + VertexRagRetrieveClient
+```
+
+**Action items:**
+
+1. Choose your RAG backend (HTTP vs Vertex AI RAG).
+2. If HTTP: Deploy your RAG service and set `RAG_BASE_URL`, `RAG_UUID`.
+3. If Vertex AI RAG: Follow `VERTEX_RAG_SETUP.md` to set up GCS, Search, and RAG Engine.
+4. Set appropriate environment variables.
+5. Test ingestion and retrieval.
 
 ---
 
-### 5.4 HTML Fetching (HtmlFetcher Implementation)
+### 7.4 HTML Fetching (HtmlFetcher Implementation)
 
 Right now HtmlFetcher is just a Protocol. To scrape real NVIDIA tech blogs, you need a concrete implementation:
 
@@ -417,7 +632,7 @@ result = await run_ingestion_pipeline(
 
 ---
 
-### 5.5 State Persistence (IDs, History, etc.)
+### 7.5 State Persistence (IDs, History, etc.)
 
 Your helpers assume state is a dict-like object. For a real deployment you want to persist it somewhere:
 
@@ -458,60 +673,116 @@ On GCS, same pattern but use `google-cloud-storage` to read/write a single JSON 
 
 ---
 
-### 5.6 Wiring the Ingestion Script
+### 7.6 Wiring the Ingestion Script
 
 Once config & dependencies exist, you'll want a small script, e.g. `scripts/run_ingest.py`, that:
 
 * Loads state (from disk or GCS).
 * Fetches feed HTML.
-* Builds HtmlFetcher, SummarizerLike wrapper, RagIngestClient.
+* Builds HtmlFetcher, GeminiSummarizer, RagIngestClient (via factory).
 * Calls `run_ingestion_pipeline`.
 * Updates state using session helpers.
 * Saves state back.
 
-**Very rough sketch:**
+**Complete example:**
 
 ```python
+import asyncio
+from nvidia_blog_agent.config import load_config_from_env
+from nvidia_blog_agent.rag_clients import create_rag_clients
+from nvidia_blog_agent.agents.workflow import run_ingestion_pipeline
+from nvidia_blog_agent.agents.gemini_summarizer import GeminiSummarizer
+from nvidia_blog_agent.context.session_config import (
+    get_existing_ids_from_state,
+    update_existing_ids_in_state,
+    store_last_ingestion_result_metadata,
+    get_last_ingestion_result_metadata,
+)
+from nvidia_blog_agent.context.compaction import (
+    append_ingestion_history_entry,
+    compact_ingestion_history,
+)
+
+# Your HtmlFetcher implementation
+class HttpHtmlFetcher:
+    async def fetch_html(self, url: str) -> str:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.text
+
 async def main():
-    state = load_state()
-
+    # Load configuration (automatically detects HTTP vs Vertex RAG)
+    config = load_config_from_env()
+    
+    # Create RAG clients (automatically selects correct implementation)
+    ingest_client, retrieve_client = create_rag_clients(config)
+    
+    # Load state
+    state = load_state()  # Your implementation
+    
+    # Get existing IDs
     existing_ids = get_existing_ids_from_state(state)
-
-    feed_html = await fetch_feed_html()  # your own function
-
+    
+    # Fetch feed HTML
+    feed_html = await fetch_feed_html()  # Your implementation
+    
+    # Create dependencies
+    fetcher = HttpHtmlFetcher()
+    summarizer = GeminiSummarizer(config.gemini)  # Real Gemini
+    
+    # Run ingestion pipeline
     result = await run_ingestion_pipeline(
         feed_html=feed_html,
         existing_ids=existing_ids,
-        fetcher=http_fetcher,
-        summarizer=real_summarizer,   # wrapper around SummarizerAgent+Gemini
-        rag_client=ingest_client,
+        fetcher=fetcher,
+        summarizer=summarizer,
+        rag_client=ingest_client,  # GcsRagIngestClient or HttpRagIngestClient
     )
-
+    
+    # Update state
     update_existing_ids_in_state(state, result.new_posts)
     store_last_ingestion_result_metadata(state, result)
-
+    
     meta = get_last_ingestion_result_metadata(state)
     append_ingestion_history_entry(state, meta)
     compact_ingestion_history(state, max_entries=20)
+    
+    # Save state
+    save_state(state)  # Your implementation
+    
+    print(f"Ingestion complete: {len(result.summaries)} summaries processed")
 
-    save_state(state)
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
 ---
 
-### 5.7 Wiring the QA Script / Service
+### 7.7 Wiring the QA Script / Service
 
 Similarly, for QA:
 
-* Build a real RagRetrieveClient (HttpRagRetrieveClient with your RAG endpoint).
-* Build a real QaModelLike using Gemini (or ADK LlmAgent).
+* Use `create_rag_clients()` to get retrieve_client (automatically selects HTTP or Vertex RAG).
+* Use `GeminiQaModel` for real Gemini QA.
 * Wrap in a small CLI or HTTP service:
 
 ```python
-qa_agent = QAAgent(rag_client=retrieve_client, model=real_qa_model)
+from nvidia_blog_agent.config import load_config_from_env
+from nvidia_blog_agent.rag_clients import create_rag_clients
+from nvidia_blog_agent.agents.gemini_qa_model import GeminiQaModel
+from nvidia_blog_agent.agents.qa_agent import QAAgent
+
+config = load_config_from_env()
+ingest_client, retrieve_client = create_rag_clients(config)
+
+qa_model = GeminiQaModel(config.gemini)
+qa_agent = QAAgent(rag_client=retrieve_client, model=qa_model)
 
 answer, docs = await qa_agent.answer("What did NVIDIA say about RAG on GPUs?", k=5)
 print(answer)
+print("Docs used:", [d.title for d in docs])
 ```
 
 For Cloud Run, you'd wrap that in FastAPI/Flask:
@@ -520,7 +791,7 @@ For Cloud Run, you'd wrap that in FastAPI/Flask:
 
 ---
 
-### 5.8 Optional: Cloud Run + MCP Story
+### 7.8 Optional: Cloud Run + MCP Story
 
 If you want the "production-style" narrative for the capstone:
 
@@ -542,38 +813,54 @@ If you want the "production-style" narrative for the capstone:
 
 ---
 
-## 6. TL;DR – Concrete To-Do List for You
+## 8. TL;DR – Concrete To-Do List for You
 
 If I boil it down to the bare bones:
 
-### Decide RAG backend
+### Choose RAG Backend
 
+**Option A: HTTP RAG**
 1. Stand up CA-RAG or a simple RAG HTTP service.
-2. Collect `RAG_BASE_URL`, `RAG_UUID`, `RAG_API_KEY`.
+2. Set `RAG_BASE_URL`, `RAG_UUID`, `RAG_API_KEY`.
+
+**Option B: Vertex AI RAG (Recommended)**
+1. Follow `VERTEX_RAG_SETUP.md`:
+   * Enable APIs: `aiplatform.googleapis.com`, `discoveryengine.googleapis.com`
+   * Create GCS bucket: `gs://nvidia-blog-rag-docs`
+   * Create Vertex AI Search data store
+   * Create Vertex AI RAG Engine corpus
+2. Set `USE_VERTEX_RAG="true"`, `RAG_CORPUS_ID`, `VERTEX_LOCATION`, `RAG_DOCS_BUCKET`.
 
 ### Configure LLM (Gemini)
 
 1. Service account + `GOOGLE_APPLICATION_CREDENTIALS`.
-2. Wire a real Gemini model into SummarizerAgent and QAAgent via your abstractions.
+2. Set `GEMINI_MODEL_NAME` and `GEMINI_LOCATION`.
+3. Use `GeminiSummarizer` and `GeminiQaModel` (already implemented).
 
 ### Implement HtmlFetcher + feed fetch
 
-1. Simple HTTP HtmlFetcher implementation.
+1. Simple HTTP HtmlFetcher implementation (see examples in `USAGE_EXAMPLE.md`).
 2. Simple `fetch_feed_html()` for NVIDIA tech blog index / RSS.
 
 ### State persistence
 
 1. Decide: local JSON vs GCS.
-2. Implement `load_state` / `save_state`.
+2. Implement `load_state` / `save_state` (see examples in section 7.5).
 
 ### Ingestion & QA entrypoints
 
-1. Script or small service for ingestion (`run_ingestion_pipeline`).
-2. Script/service for QA (`QAAgent.answer`).
+1. Script for ingestion using `run_ingestion_pipeline` (see section 7.6).
+2. Script/service for QA using `QAAgent.answer` (see section 7.7).
+
+### Test Run
+
+1. Run ingestion pass → verify documents in GCS (Vertex RAG) or RAG backend (HTTP RAG).
+2. Run QA query → verify answer and retrieved documents.
+3. Check Vertex AI Search Console (if using Vertex RAG) to confirm indexing.
 
 ---
 
-## 7. Assumptions, Design Choices & Gaps
+## 9. Assumptions, Design Choices & Gaps
 
 ### Assumptions
 
@@ -605,3 +892,8 @@ If I boil it down to the bare bones:
   * Error handling and retries for external services.
   * Logging and observability.
   * Rate limiting and cost management.
+* Capstone deliverables:
+  * High-level architecture diagram
+  * Notebook/Colab demo showing ingestion + QA
+  * Evaluation results using eval/harness.py
+  * Reproducibility instructions
