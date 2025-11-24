@@ -21,3 +21,6 @@ lxml>=4.9.0
 # Date/time handling
 python-dateutil>=2.8.0
 
+# MCP server dependencies (for nvidia_blog_mcp_server.py)
+mcp>=0.1.0
+python-dotenv>=1.0.0

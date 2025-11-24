@@ -8,9 +8,9 @@ This system provides an end-to-end pipeline that:
 
 1. **Discovers** new NVIDIA technical blog posts from feed HTML
 2. **Scrapes** and parses blog post content into structured data
-3. **Summarizes** posts using Gemini LLM models
+3. **Summarizes** posts using Gemini 1.5 Pro
 4. **Ingests** summaries into a RAG backend (HTTP-based or Vertex AI RAG Engine)
-5. **Answers questions** about NVIDIA blogs using RAG retrieval + Gemini
+5. **Answers questions** about NVIDIA blogs using RAG retrieval + Gemini 1.5 Pro
 
 ## Architecture
 
@@ -41,13 +41,27 @@ The system supports **two RAG backend modes**:
 
 The system automatically detects which backend to use based on environment variables.
 
+### Technical Specifications
+
+- **Embedding Model**: `text-embedding-005` (used by Vertex AI RAG Engine)
+- **Chunk Size**: 1024 tokens (configured in Vertex AI Search data store)
+- **Chunk Overlap**: 256 tokens (configured in Vertex AI Search data store)
+- **Hybrid Search**: Enabled by default (combines vector similarity + keyword/BM25)
+- **Reranking**: Available via Vertex AI ranking API
+- **QA Model**: Gemini 1.5 Pro
+- **Summarization Model**: Gemini 1.5 Pro
+- **Retrieval**: Recommended `top_k=8-10` for initial retrieval, top 4-6 after reranking (configurable)
+- **Document Strategy**: One document per blog post
+
+See [ENGINEERING_STATUS_REPORT.md](ENGINEERING_STATUS_REPORT.md) for complete technical details.
+
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.10+
 - Google Cloud Project with billing enabled
-- Service account with appropriate permissions (see [VERTEX_RAG_SETUP.md](VERTEX_RAG_SETUP.md))
+- Service account with appropriate permissions (see [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md))
 
 ### Installation
 
@@ -70,6 +84,14 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 
 ### Configuration
 
+**Quick Start**: Copy `env.template` to `.env` and fill in your values:
+```bash
+cp env.template .env
+# Edit .env with your actual values
+```
+
+Or set environment variables directly in your shell.
+
 #### For Vertex AI RAG (Recommended)
 
 ```bash
@@ -79,15 +101,24 @@ export GEMINI_LOCATION="us-central1"
 
 # Vertex AI RAG Configuration
 export USE_VERTEX_RAG="true"
-export RAG_CORPUS_ID="your-corpus-id"
+export RAG_CORPUS_ID="1234567890123456789"  # Your corpus ID from Vertex AI RAG Engine
 export VERTEX_LOCATION="us-central1"
 export RAG_DOCS_BUCKET="gs://nvidia-blog-rag-docs"
 
 # GCP Project
 export GOOGLE_CLOUD_PROJECT="nvidia-blog-agent"
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+
+# State Persistence (optional)
+# Development: local file
+export STATE_PATH="state.json"
+# Production: GCS bucket (recommended)
+# export STATE_PATH="gs://nvidia-blog-agent-state/state.json"
 ```
 
-See [VERTEX_RAG_SETUP.md](VERTEX_RAG_SETUP.md) for complete Vertex AI RAG setup instructions.
+**Important**: When `USE_VERTEX_RAG=true`, the system automatically uses Vertex AI RAG Engine. Make sure you've completed the setup steps in [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) (Part 1: Vertex AI RAG Setup) before running ingestion or QA.
+
+See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for complete setup and deployment instructions.
 
 #### For HTTP-Based RAG
 
@@ -144,7 +175,7 @@ The script will:
 1. Load configuration from environment variables
 2. Load persisted state (tracks previously seen blog post IDs)
 3. Fetch the NVIDIA Tech Blog feed HTML
-4. Discover new posts, scrape content, summarize, and ingest into RAG
+4. Discover new posts, scrape content, summarize, and ingest into RAG using `run_ingestion_pipeline()`
 5. Update and save state with new post IDs and ingestion metadata
 
 **State Persistence:**
@@ -173,14 +204,126 @@ python scripts/run_qa.py "Question here" --verbose
 ```
 
 The script will:
-1. Load configuration and create RAG retrieve client
-2. Retrieve relevant documents from the RAG backend
-3. Generate an answer using Gemini based on retrieved documents
+1. Load configuration and create RAG retrieve client (automatically selects Vertex RAG if `USE_VERTEX_RAG=true`)
+2. Retrieve relevant documents from the RAG backend (recommended: top 8-10 documents initially, then top 4-6 after reranking)
+3. Generate an answer using Gemini 1.5 Pro based on retrieved documents
 4. Display the answer and source document titles/URLs
+
+**Note**: The `--top-k` parameter is configurable; 8-10 is recommended for optimal retrieval quality.
+
+## Evaluation
+
+The system includes an evaluation harness for testing QA performance with different RAG configurations. This is useful for comparing retrieval strategies, chunk sizes, and other parameters.
+
+### Quick Start: Using the Eval Script
+
+The easiest way to run evaluations is using the provided script:
+
+```bash
+# Run with default test cases
+python scripts/run_eval_vertex.py
+
+# Run with verbose logging
+python scripts/run_eval_vertex.py --verbose
+
+# Save results to JSON file
+python scripts/run_eval_vertex.py --output eval_results.json
+
+# Use custom test cases from JSON file
+python scripts/run_eval_vertex.py --cases-file my_cases.json
+```
+
+The script will:
+1. Load your Vertex RAG configuration from environment variables
+2. Create a real QA agent with Vertex RAG backend
+3. Run evaluation test cases
+4. Print summary statistics and detailed results
+5. Optionally save results to JSON for documentation
+
+### Programmatic Evaluation
+
+You can also use the evaluation harness directly in your code:
+
+```python
+from nvidia_blog_agent.config import load_config_from_env
+from nvidia_blog_agent.rag_clients import create_rag_clients
+from nvidia_blog_agent.agents.qa_agent import QAAgent
+from nvidia_blog_agent.agents.gemini_qa_model import GeminiQaModel
+from nvidia_blog_agent.eval.harness import (
+    EvalCase,
+    run_qa_evaluation,
+    summarize_eval_results
+)
+
+# Load configuration
+config = load_config_from_env()
+
+# Create RAG clients (will use Vertex RAG if configured)
+_, retrieve_client = create_rag_clients(config)
+
+# Create QA agent
+qa_model = GeminiQaModel(config.gemini)
+qa_agent = QAAgent(rag_client=retrieve_client, model=qa_model)
+
+# Define evaluation cases
+eval_cases = [
+    EvalCase(
+        question="What did NVIDIA say about RAG on GPUs?",
+        expected_substrings=["RAG", "GPU"],
+        max_docs=8
+    ),
+    EvalCase(
+        question="How does CUDA acceleration work?",
+        expected_substrings=["CUDA", "acceleration"],
+        max_docs=10
+    ),
+    # Add more test cases...
+]
+
+# Run evaluation
+results = await run_qa_evaluation(qa_agent, eval_cases)
+
+# Summarize results
+summary = summarize_eval_results(results)
+print(f"Total cases: {summary.total}")
+print(f"Passed: {summary.passed}")
+print(f"Failed: {summary.failed}")
+print(f"Pass rate: {summary.pass_rate:.2%}")
+
+# Inspect individual results
+for result in results:
+    print(f"Question: {result.question}")
+    print(f"Passed: {result.passed}")
+    print(f"Answer: {result.answer[:200]}...")
+    print(f"Retrieved docs: {len(result.retrieved_docs)}")
+    print("---")
+```
+
+### Evaluation Use Cases
+
+- **Compare RAG configurations**: Test different chunk sizes, embedding models, or retrieval strategies
+- **Regression testing**: Ensure QA quality doesn't degrade after changes
+- **A/B testing**: Compare Vertex RAG vs HTTP RAG backends
+- **Parameter tuning**: Find optimal `top_k` values, reranking settings, etc.
+
+The evaluation harness can be used to compare different RAG configurations (e.g., chunk_size changes) even though the current system uses 1024/256 as the default.
+
+## Cloud Run HTTP API
+
+The project includes a production-ready FastAPI service for Cloud Run deployment:
+
+- **POST /ask**: Answer questions using RAG retrieval + Gemini QA
+- **POST /ingest**: Trigger ingestion pipeline (optional API key protection)
+- **GET /health**: Health check endpoint
+
+See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for deployment instructions and [LOCAL_TESTING.md](LOCAL_TESTING.md) for local testing.
 
 ## Documentation
 
-- **[VERTEX_RAG_SETUP.md](VERTEX_RAG_SETUP.md)**: Complete guide for setting up Vertex AI RAG Engine
+- **[CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md)**: Complete guide for Vertex AI RAG setup and Cloud Run deployment
+- **[ENGINEERING_STATUS_REPORT.md](ENGINEERING_STATUS_REPORT.md)**: Technical details about runtime configuration and architecture
+- **[QUICK_START.md](QUICK_START.md)**: Fast path to get running locally and deployed
+- **[LOCAL_TESTING.md](LOCAL_TESTING.md)**: Guide for testing the FastAPI service locally
 
 ### Code Examples
 
@@ -234,7 +377,7 @@ print(answer)
 print("Sources:", [d.title for d in docs])
 ```
 
-See [VERTEX_RAG_SETUP.md](VERTEX_RAG_SETUP.md) for complete setup instructions.
+See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for complete setup instructions.
 
 ## Project Structure
 
@@ -251,15 +394,20 @@ nvidia_blog_agent/                    # Project root
 │   ├── context/                     # Session state management and compaction
 │   │   └── state_persistence.py     # State load/save helpers (local JSON or GCS)
 │   └── eval/                        # Evaluation harness
+├── service/                          # Cloud Run HTTP API service
+│   └── app.py                       # FastAPI application (POST /ask, POST /ingest)
 ├── scripts/                          # Runtime entrypoints
 │   ├── run_ingest.py                # Ingestion pipeline script
-│   └── run_qa.py                    # QA query script
+│   ├── run_qa.py                    # QA query script
+│   ├── test_service_local.py        # Local service smoke tests
+│   └── kaggle_notebook_example.py   # Example code for Kaggle notebooks
 ├── tests/                            # Comprehensive test suite (182 tests)
+├── Dockerfile                        # Container image for Cloud Run
 ├── pyproject.toml                   # Modern Python packaging configuration
 └── requirements.txt                  # Dependencies (for reference)
 ```
 
-**Package Structure:** The project follows standard Python packaging conventions. The `nvidia_blog_agent/` directory is the installable package, and all source code lives within it. The project root contains scripts, tests, and configuration files.
+**Package Structure:** The project follows standard Python packaging conventions. The `nvidia_blog_agent/` directory is the installable package, and all source code lives within it. The project root contains scripts, tests, configuration files, and the Cloud Run service.
 
 ## Key Features
 
@@ -294,8 +442,10 @@ nvidia_blog_agent/                    # Project root
 
 - `GEMINI_LOCATION`: Gemini model location
 - `RAG_API_KEY`: API key for HTTP RAG (if required)
-- `RAG_SEARCH_ENGINE_NAME`: Vertex AI Search engine name (if querying directly)
+- `RAG_SEARCH_ENGINE_NAME`: Vertex AI Search serving config resource name (if querying directly)
 - `STATE_PATH`: Path to state file (local JSON or `gs://bucket/blob.json`). Defaults to `state.json`
+  - **Development**: `state.json` (local file)
+  - **Production**: `gs://nvidia-blog-agent-state/state.json` (GCS bucket, recommended)
 
 ## Contributing
 
