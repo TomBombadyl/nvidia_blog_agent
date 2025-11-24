@@ -41,6 +41,17 @@ Thumbs.db
 .env
 .env.local
 
+# Secrets and credentials
+*-sa.json
+*service-account*.json
+*.key
+*.pem
+credentials.json
+
+# State files (may contain sensitive data)
+state.json
+*.state.json
+
 # Logs
 *.log
 

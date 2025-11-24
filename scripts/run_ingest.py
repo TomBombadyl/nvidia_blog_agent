@@ -20,7 +20,17 @@ import asyncio
 import argparse
 import sys
 import logging
+import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# If GOOGLE_APPLICATION_CREDENTIALS is set to a placeholder path, unset it to use ADC
+if os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").startswith("/path/to/") or not os.path.exists(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")):
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
 
 # Note: This script assumes nvidia_blog_agent is installed (e.g., via `pip install -e .`)
 # No sys.path manipulation needed when package is properly installed

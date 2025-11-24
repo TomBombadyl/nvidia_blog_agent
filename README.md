@@ -6,8 +6,8 @@ A production-ready system for discovering, processing, and querying NVIDIA techn
 
 This system provides an end-to-end pipeline that:
 
-1. **Discovers** new NVIDIA technical blog posts from feed HTML
-2. **Scrapes** and parses blog post content into structured data
+1. **Discovers** new NVIDIA technical blog posts from RSS/Atom feed or HTML
+2. **Scrapes** and parses blog post content into structured data (uses RSS feed content when available)
 3. **Summarizes** posts using Gemini 1.5 Pro
 4. **Ingests** summaries into a RAG backend (HTTP-based or Vertex AI RAG Engine)
 5. **Answers questions** about NVIDIA blogs using RAG retrieval + Gemini 1.5 Pro
@@ -97,12 +97,12 @@ Or set environment variables directly in your shell.
 ```bash
 # Gemini Configuration
 export GEMINI_MODEL_NAME="gemini-1.5-pro"
-export GEMINI_LOCATION="us-central1"
+export GEMINI_LOCATION="us-east5"
 
 # Vertex AI RAG Configuration
 export USE_VERTEX_RAG="true"
 export RAG_CORPUS_ID="1234567890123456789"  # Your corpus ID from Vertex AI RAG Engine
-export VERTEX_LOCATION="us-central1"
+export VERTEX_LOCATION="us-east5"
 export RAG_DOCS_BUCKET="gs://nvidia-blog-rag-docs"
 
 # GCP Project
@@ -125,7 +125,7 @@ See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for complete setup and de
 ```bash
 # Gemini Configuration
 export GEMINI_MODEL_NAME="gemini-1.5-pro"
-export GEMINI_LOCATION="us-central1"
+export GEMINI_LOCATION="us-east5"
 
 # HTTP RAG Configuration
 export RAG_BASE_URL="https://your-rag-service.run.app"
@@ -155,7 +155,7 @@ All 182 tests should pass.
 Use the `run_ingest.py` script to run a complete ingestion pass:
 
 ```bash
-# Basic usage (uses default state.json and NVIDIA blog feed)
+# Basic usage (uses default state.json and NVIDIA blog RSS feed)
 python scripts/run_ingest.py
 
 # Specify custom state file
@@ -164,8 +164,8 @@ python scripts/run_ingest.py --state-path state.json
 # Use GCS for state persistence
 python scripts/run_ingest.py --state-path gs://nvidia-blog-agent-state/state.json
 
-# Use custom feed URL
-python scripts/run_ingest.py --feed-url https://custom-blog.com
+# Use custom feed URL (RSS/Atom feed or HTML page)
+python scripts/run_ingest.py --feed-url https://custom-blog.com/feed/
 
 # Enable verbose logging
 python scripts/run_ingest.py --verbose
@@ -174,9 +174,21 @@ python scripts/run_ingest.py --verbose
 The script will:
 1. Load configuration from environment variables
 2. Load persisted state (tracks previously seen blog post IDs)
-3. Fetch the NVIDIA Tech Blog feed HTML
-4. Discover new posts, scrape content, summarize, and ingest into RAG using `run_ingestion_pipeline()`
+3. Fetch the NVIDIA Tech Blog RSS feed (default: `https://developer.nvidia.com/blog/feed/`)
+4. Discover new posts, extract content from RSS feed when available, scrape if needed, summarize, and ingest into RAG using `run_ingestion_pipeline()`
 5. Update and save state with new post IDs and ingestion metadata
+
+**RSS Feed Support:**
+
+The system automatically uses RSS/Atom feeds when available, which provides several benefits:
+- **No 403 errors**: RSS feeds are designed for programmatic access
+- **Faster processing**: Full post content is included in the feed, eliminating the need to fetch individual pages
+- **More reliable**: Avoids rate limiting and blocking issues
+
+The system supports both Atom and RSS 2.0 feed formats and automatically extracts:
+- Post titles, URLs, publication dates, and categories
+- Full HTML content from `<content>` tags (Atom) or `<content:encoded>` tags (RSS 2.0)
+- Falls back to HTML page parsing if RSS feed is not available
 
 **State Persistence:**
 
@@ -184,6 +196,54 @@ State can be stored locally or in GCS:
 - **Local file**: `--state-path state.json` (default)
 - **GCS**: `--state-path gs://bucket-name/state.json`
 - **Environment variable**: Set `STATE_PATH` to override default
+
+### RSS/Atom Feed Support
+
+The system includes robust RSS and Atom feed parsing with automatic content extraction. This feature provides significant advantages over HTML page scraping:
+
+#### Benefits
+
+- **No 403 Errors**: RSS feeds are designed for programmatic access and don't block automated requests
+- **Faster Processing**: Full post content is included in the feed, eliminating the need to fetch individual pages
+- **More Reliable**: Avoids rate limiting, IP blocking, and other anti-scraping measures
+- **Complete Content**: Extracts full HTML content from feed entries when available
+
+#### Supported Formats
+
+- **Atom Feeds**: Parses `<entry>` elements with `<content type="html">` tags
+- **RSS 2.0 Feeds**: Parses `<item>` elements with `<content:encoded>` or `<description>` tags
+- **HTML Fallback**: Automatically falls back to HTML page parsing if feed format is not detected
+
+#### How It Works
+
+1. **Feed Detection**: The system automatically detects RSS/Atom feeds by checking for XML structure
+2. **Content Extraction**: Extracts full HTML content from feed entries when available
+3. **Smart Fallback**: If feed content is not available, falls back to fetching individual post pages
+4. **Transparent Usage**: The same API works for both RSS feeds and HTML pages
+
+#### Testing RSS Feed Parsing
+
+You can test RSS feed parsing with the provided test script:
+
+```bash
+# Test RSS feed parsing with the actual NVIDIA feed
+python scripts/test_rss_feed.py
+```
+
+This script will:
+- Fetch the RSS feed from `https://developer.nvidia.com/blog/feed/`
+- Parse all posts and extract content
+- Show statistics about content extraction success
+- Display sample posts with content previews
+
+#### Default Feed URL
+
+By default, the system uses the NVIDIA Tech Blog RSS feed:
+- **URL**: `https://developer.nvidia.com/blog/feed/`
+- **Format**: Atom feed with full HTML content in `<content>` tags
+- **Content**: All posts include complete HTML content in the feed
+
+You can override the feed URL using the `--feed-url` parameter or by modifying the `fetch_feed_html()` function.
 
 ### Running QA Queries
 
@@ -346,15 +406,16 @@ ingest_client, retrieve_client = create_rag_clients(config)
 # Create summarizer
 summarizer = GeminiSummarizer(config.gemini)
 
-# Fetch feed and run ingestion
-feed_html = await fetch_feed_html()
+# Fetch RSS feed (automatically uses RSS feed URL by default)
+# The feed includes full post content, avoiding 403 errors
+feed_html = await fetch_feed_html()  # Fetches from https://developer.nvidia.com/blog/feed/
 state = load_state()
 existing_ids = set()  # Or load from state
 
 result = await run_ingestion_pipeline(
     feed_html=feed_html,
     existing_ids=existing_ids,
-    fetcher=HttpHtmlFetcher(),
+    fetcher=HttpHtmlFetcher(),  # Only used if RSS feed doesn't include content
     summarizer=summarizer,
     rag_client=ingest_client,
 )
@@ -362,6 +423,8 @@ result = await run_ingestion_pipeline(
 # Save state
 save_state(state)
 ```
+
+**Note**: When RSS feed content is available, the system uses it directly without fetching individual post pages. This is faster and avoids 403 errors. The `HttpHtmlFetcher` is only used as a fallback when feed content is not available.
 
 #### QA Usage
 
@@ -411,12 +474,14 @@ nvidia_blog_agent/                    # Project root
 
 ## Key Features
 
+- ✅ **RSS/Atom Feed Support**: Automatic parsing of RSS and Atom feeds with full content extraction
 - ✅ **Dual RAG Backend Support**: HTTP-based or Vertex AI RAG Engine
 - ✅ **Automatic Backend Detection**: Switch backends via environment variables
-- ✅ **Full Test Coverage**: 182 tests covering all components
+- ✅ **Full Test Coverage**: 182+ tests covering all components
 - ✅ **Production Ready**: Error handling, type hints, comprehensive documentation
 - ✅ **Modular Design**: Protocol-based abstractions for easy testing and extension
 - ✅ **State Management**: Session state with prefixes, history, and compaction
+- ✅ **Efficient Content Extraction**: Uses RSS feed content directly to avoid 403 errors and improve performance
 
 ## Environment Variables Reference
 
@@ -435,7 +500,7 @@ nvidia_blog_agent/                    # Project root
 
 - `USE_VERTEX_RAG`: Set to "true"
 - `RAG_CORPUS_ID`: Vertex AI RAG corpus ID
-- `VERTEX_LOCATION`: Region (e.g., "us-central1")
+- `VERTEX_LOCATION`: Region (e.g., "us-east5" for Columbus)
 - `RAG_DOCS_BUCKET`: GCS bucket for documents (e.g., "gs://nvidia-blog-rag-docs")
 
 ### Optional

@@ -50,7 +50,7 @@ The system uses **Vertex AI RAG Engine + Vertex AI Search + GCS** as the primary
 - `USE_VERTEX_RAG`: Set to `"true"` to enable Vertex AI RAG Engine
 - `RAG_CORPUS_ID`: Vertex AI RAG corpus ID (numeric ID from corpus resource name)
 - `RAG_DOCS_BUCKET`: GCS bucket for documents (e.g., `gs://nvidia-blog-rag-docs`)
-- `VERTEX_LOCATION`: Region for Vertex AI services (e.g., `us-central1`)
+- `VERTEX_LOCATION`: Region for Vertex AI services (e.g., `us-east5` for Columbus)
 
 #### Optional
 
@@ -111,11 +111,69 @@ The system automatically detects which RAG backend to use:
 
 ### Pipeline Flow
 
-1. **Discovery**: Parse NVIDIA blog feed HTML to find new posts
-2. **Scraping**: Fetch and parse individual blog post content
+1. **Discovery**: Parse NVIDIA blog RSS/Atom feed or HTML to find new posts
+   - **RSS/Atom Feed Support**: Automatically detects and parses RSS 2.0 and Atom feed formats
+   - **Content Extraction**: Extracts full HTML content from feed entries when available (`<content>` for Atom, `<content:encoded>` for RSS)
+   - **HTML Fallback**: Falls back to HTML page parsing if feed format is not detected
+   - **Benefits**: Avoids 403 errors, faster processing, more reliable than individual page scraping
+2. **Scraping**: Use feed content directly when available, or fetch and parse individual blog post pages as fallback
+   - **Smart Content Usage**: If RSS feed includes content, uses it directly without HTTP requests
+   - **Fallback Fetching**: Only fetches individual pages when feed content is not available
 3. **Summarization**: Generate summaries using Gemini 1.5 Pro
 4. **Ingestion**: Write documents to RAG backend using `run_ingestion_pipeline()` (GCS for Vertex RAG)
 5. **QA**: Retrieve relevant documents and generate grounded answers using Gemini 1.5 Pro
+
+### RSS/Atom Feed Implementation
+
+The system includes comprehensive RSS and Atom feed parsing with automatic content extraction:
+
+#### Feed Format Support
+
+- **Atom Feeds**: Parses `<feed>` root element with `<entry>` items
+  - Extracts content from `<content type="html">` or `<content type="xhtml">` elements
+  - Handles CDATA sections automatically via ElementTree
+  - Supports namespaced elements (`{http://www.w3.org/2005/Atom}entry`)
+  
+- **RSS 2.0 Feeds**: Parses `<rss>` root element with `<channel>` → `<item>` structure
+  - Extracts content from `<content:encoded>` (preferred) or `<description>` elements
+  - Falls back to description if content:encoded is not available
+  - Supports standard RSS 2.0 date formats (`pubDate`)
+
+#### Content Extraction Strategy
+
+1. **Feed Detection**: Automatically detects feed format by checking XML structure
+   - Checks for `<?xml` declaration, `<feed>`, or `<rss>` root elements
+   - Falls back to HTML parsing if XML structure is not detected
+
+2. **Content Priority**:
+   - **Atom**: `<content type="html">` or `<content type="xhtml">` (prefers HTML content)
+   - **RSS 2.0**: `<content:encoded>` (preferred) → `<description>` (fallback)
+   - **HTML Fallback**: If no feed content available, fetches individual post pages
+
+3. **Content Storage**: Extracted content is stored in `BlogPost.content` field
+   - Used directly by scraper when available
+   - Eliminates need for HTTP requests to individual post pages
+
+#### Performance Benefits
+
+- **No 403 Errors**: RSS feeds are designed for programmatic access
+- **Faster Processing**: Single feed fetch vs. multiple individual page fetches
+- **More Reliable**: Avoids rate limiting and IP blocking
+- **Complete Content**: Full HTML content available in feed (NVIDIA feed includes 100% of posts with content)
+
+#### Default Feed Configuration
+
+- **Default URL**: `https://developer.nvidia.com/blog/feed/`
+- **Format**: Atom feed with full HTML content
+- **Content Coverage**: 100% of posts include full HTML content in feed
+- **Average Content Size**: ~4,000 characters per post
+
+#### Implementation Details
+
+- **Parser**: `nvidia_blog_agent.tools.discovery._parse_atom_feed()`
+- **Content Extraction**: Handles CDATA, HTML entities, and nested XML elements
+- **Scraper Integration**: `nvidia_blog_agent.tools.scraper.fetch_and_parse_blog()` checks `BlogPost.content` first
+- **Backward Compatible**: Works with or without feed content (graceful fallback)
 
 ## Evaluation
 

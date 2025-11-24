@@ -24,7 +24,7 @@ pip install "fastapi>=0.104.0" "uvicorn[standard]>=0.24.0"
 Copy `env.template` to `.env` and set:
 - `USE_VERTEX_RAG=true`
 - `RAG_CORPUS_ID=your_corpus_id`
-- `VERTEX_LOCATION=us-central1`
+- `VERTEX_LOCATION=us-east5`
 - `RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs`
 - `GEMINI_MODEL_NAME=gemini-1.5-pro`
 - `GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json`
@@ -94,11 +94,11 @@ gcloud run deploy nvidia-blog-agent \
     --set-env-vars "GOOGLE_CLOUD_PROJECT=$PROJECT_ID" \
     --set-env-vars "USE_VERTEX_RAG=true" \
     --set-env-vars "RAG_CORPUS_ID=YOUR_CORPUS_ID" \
-    --set-env-vars "VERTEX_LOCATION=us-central1" \
+    --set-env-vars "VERTEX_LOCATION=us-east5" \
     --set-env-vars "RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs" \
     --set-env-vars "STATE_PATH=gs://nvidia-blog-agent-state/state.json" \
     --set-env-vars "GEMINI_MODEL_NAME=gemini-1.5-pro" \
-    --set-env-vars "GEMINI_LOCATION=us-central1"
+    --set-env-vars "GEMINI_LOCATION=us-east5"
 ```
 
 ### 4. Test Deployed Service

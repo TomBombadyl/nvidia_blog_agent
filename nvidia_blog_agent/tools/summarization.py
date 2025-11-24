@@ -10,7 +10,7 @@ and integrate with various LLM providers.
 
 import json
 import re
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from nvidia_blog_agent.contracts.blog_models import RawBlogContent, BlogSummary
 
@@ -108,8 +108,43 @@ Return ONLY valid JSON. Do not include any markdown formatting, code block marke
 def parse_summary_json(
     raw: RawBlogContent,
     json_text: str,
-    published_at: Optional[datetime] = None
+    published_at: Optional[datetime] = None,
+    categories: Optional[List[str]] = None
 ) -> BlogSummary:
+    """Parse LLM JSON response into a BlogSummary object.
+    
+    This function handles common LLM response formats:
+    - JSON wrapped in markdown code blocks (```json ... ```)
+    - JSON with leading/trailing whitespace
+    - Plain JSON strings
+    
+    Args:
+        raw: RawBlogContent object used to generate the summary.
+        json_text: JSON string response from the LLM (may include markdown formatting).
+        published_at: Optional publication timestamp. If None, will be None in BlogSummary.
+        categories: Optional list of categories from the original BlogPost. If None, uses raw.categories.
+    
+    Returns:
+        BlogSummary object with parsed data.
+    
+    Raises:
+        ValueError: If JSON cannot be parsed or required fields are missing.
+        ValidationError: If parsed data doesn't meet BlogSummary validation requirements.
+    
+    Example:
+        >>> raw = RawBlogContent(
+        ...     blog_id="test-id",
+        ...     url="https://example.com/post",
+        ...     title="Test Post",
+        ...     html="<html>...</html>",
+        ...     text="Content here",
+        ...     categories=["AI / Machine Learning"]
+        ... )
+        >>> json_str = '{"executive_summary": "Summary", "technical_summary": "Detailed technical summary with enough content to meet validation requirements.", "bullet_points": [], "keywords": []}'
+        >>> summary = parse_summary_json(raw, json_str)
+        >>> summary.blog_id == "test-id"
+        True
+    """
     """Parse LLM JSON response into a BlogSummary object.
     
     This function handles common LLM response formats:
@@ -178,6 +213,15 @@ def parse_summary_json(
         bullet_points = []
     if not isinstance(keywords, list):
         keywords = []
+    
+    # Merge categories into keywords (use raw.categories if categories not provided)
+    categories_to_merge = categories if categories is not None else (raw.categories if hasattr(raw, 'categories') else [])
+    if categories_to_merge:
+        normalized_categories = [cat.strip().lower() for cat in categories_to_merge if cat.strip()]
+        # Add categories to keywords if not already present
+        for cat in normalized_categories:
+            if cat not in keywords:
+                keywords.append(cat)
     
     # Create BlogSummary
     return BlogSummary(

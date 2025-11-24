@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from mcp import types as mcp_types
 from mcp.server.lowlevel import Server, NotificationOptions
 from mcp.server.models import InitializationOptions
-import mcp.server.stdio
+from mcp.server.stdio import stdio_server
 
 load_dotenv()
 
@@ -166,10 +166,12 @@ async def call_tool(
 
 async def main() -> None:
     """Run as stdio server so any MCP host can spawn it."""
-    await mcp.server.stdio.serve(
-        app,
-        notification_options=NotificationOptions(),
-    )
+    async with stdio_server() as (read_stream, write_stream):
+        await app.run(
+            read_stream,
+            write_stream,
+            NotificationOptions(),
+        )
 
 
 if __name__ == "__main__":

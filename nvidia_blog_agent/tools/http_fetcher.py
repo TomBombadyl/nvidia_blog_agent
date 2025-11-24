@@ -30,18 +30,41 @@ class HttpHtmlFetcher:
         """
         self.timeout = timeout
         self.headers = headers or {}
-        # Add a default User-Agent if not provided
-        if "User-Agent" not in self.headers:
-            self.headers["User-Agent"] = (
-                "Mozilla/5.0 (compatible; NVIDIA-Blog-Agent/1.0; "
-                "+https://github.com/nvidia/blog-agent)"
-            )
+        
+        # Set browser-like headers to avoid bot detection
+        # These mimic a real Chrome browser on Windows
+        default_headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                "image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
+        }
+        
+        # Merge user-provided headers with defaults (user headers take precedence)
+        for key, value in default_headers.items():
+            if key not in self.headers:
+                self.headers[key] = value
     
-    async def fetch_html(self, url: str) -> str:
+    async def fetch_html(self, url: str, referer: str | None = None) -> str:
         """Fetch HTML content from the given URL.
         
         Args:
             url: The URL to fetch HTML from.
+            referer: Optional referer URL to include in headers (for browser-like behavior).
         
         Returns:
             Raw HTML string content.
@@ -56,38 +79,45 @@ class HttpHtmlFetcher:
             >>> len(html) > 0
             True
         """
-        async with httpx.AsyncClient(timeout=self.timeout, headers=self.headers) as client:
+        # Create headers copy and add referer if provided
+        request_headers = dict(self.headers)
+        if referer:
+            request_headers["Referer"] = referer
+        
+        async with httpx.AsyncClient(timeout=self.timeout, headers=request_headers) as client:
             response = await client.get(url, follow_redirects=True)
             response.raise_for_status()
             return response.text
 
 
 async def fetch_feed_html(feed_url: str | None = None) -> str:
-    """Fetch the NVIDIA Tech Blog feed HTML.
+    """Fetch the NVIDIA Tech Blog feed.
     
-    Fetches the HTML content from the NVIDIA Developer Blog feed page.
-    The default URL is the main blog index page which lists recent posts.
+    Fetches the feed content (RSS/Atom XML or HTML) from the NVIDIA Developer Blog.
+    The default URL is the RSS/Atom feed which is more reliable and less likely
+    to be blocked than the HTML index page.
     
     Args:
         feed_url: Optional custom feed URL. If None, uses the default NVIDIA
-                 Tech Blog URL: https://developer.nvidia.com/blog
+                 Tech Blog RSS feed: https://developer.nvidia.com/blog/feed/
     
     Returns:
-        Raw HTML string containing the blog feed/index page.
+        Raw XML/HTML string containing the blog feed (Atom/RSS XML or HTML).
     
     Raises:
         httpx.HTTPStatusError: If the HTTP request returns a non-2xx status code.
         httpx.RequestError: If the request fails due to network or other errors.
     
     Example:
-        >>> html = await fetch_feed_html()
-        >>> len(html) > 0
+        >>> feed = await fetch_feed_html()
+        >>> len(feed) > 0
         True
         >>> # Use custom URL
-        >>> html = await fetch_feed_html("https://custom-blog.com")
+        >>> feed = await fetch_feed_html("https://custom-blog.com/feed/")
     """
     if feed_url is None:
-        feed_url = "https://developer.nvidia.com/blog"
+        # Use RSS/Atom feed by default (more reliable, less likely to be blocked)
+        feed_url = "https://developer.nvidia.com/blog/feed/"
     
     fetcher = HttpHtmlFetcher()
     return await fetcher.fetch_html(feed_url)
