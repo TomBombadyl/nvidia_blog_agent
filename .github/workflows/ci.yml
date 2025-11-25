@@ -34,7 +34,7 @@ jobs:
         pytest -v --tb=short --cov=nvidia_blog_agent --cov-report=term-missing
     
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       if: matrix.python-version == '3.11'
       with:
         file: ./coverage.xml
