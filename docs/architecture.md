@@ -216,30 +216,50 @@ python scripts/run_eval_vertex.py --cases-file my_cases.json
 
 ### Evaluation Results (Vertex RAG)
 
-<!-- 
-TODO: Fill in this section after running `python scripts/run_eval_vertex.py`
-Copy the summary and key results from the output, or paste from the JSON output file.
--->
-
-**Evaluation Date**: [YYYY-MM-DD]  
+**Evaluation Date**: 2024-12-XX (Run evaluation to update)  
 **Configuration**:
 - RAG Backend: Vertex AI RAG Engine
-- Corpus ID: `[corpus_id]`
-- Location: `[vertex_location]`
+- Corpus ID: Configured via `RAG_CORPUS_ID` environment variable
+- Location: Configured via `VERTEX_LOCATION` environment variable
 - Embedding Model: `text-embedding-005`
 - Gemini Model: `gemini-2.0-flash-001`
 - Retrieval: `top_k=8-10` (recommended), reranking enabled
 
-**Summary**:
+**How to Run Evaluation**:
+
+```bash
+# Set required environment variables
+export USE_VERTEX_RAG=true
+export RAG_CORPUS_ID=<your-corpus-id>
+export VERTEX_LOCATION=<your-location>
+export GEMINI_MODEL_NAME=gemini-2.0-flash-001
+export GOOGLE_CLOUD_PROJECT=<your-project-id>
+
+# Run evaluation
+python scripts/run_eval_vertex.py --output eval_results.json
+
+# View results
+cat eval_results.json
+```
+
+**Expected Output Format**:
+
+The evaluation script outputs JSON with the following structure:
+- `timestamp`: ISO timestamp of evaluation run
+- `config`: Configuration used (model, backend, corpus ID, location)
+- `summary`: Overall statistics (total, passed, failed, pass_rate)
+- `results`: Detailed results for each test case
+
+**Summary** (Update after running):
 - Total cases: [N]
 - Passed: [N]
 - Failed: [N]
 - Pass rate: [X]%
 
-**Key Findings**:
+**Key Findings** (Update after running):
 - [Add observations about retrieval quality, answer accuracy, etc.]
 
-**Sample Results**:
+**Sample Results** (Update after running):
 1. **Question**: "[Example question]"
    - Status: ✅ PASS / ❌ FAIL
    - Retrieved docs: [N]
@@ -249,7 +269,10 @@ Copy the summary and key results from the output, or paste from the JSON output 
 2. [Add more sample results...]
 
 **Notes**:
-- [Any observations about performance, edge cases, improvements needed, etc.]
+- Evaluation harness uses substring matching for pass/fail determination
+- Custom test cases can be provided via `--cases-file` argument
+- Results are deterministic when using the same RAG corpus and model configuration
+- Performance metrics (latency, retrieval quality) should be tracked over time
 
 ## References
 

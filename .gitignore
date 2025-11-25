@@ -48,6 +48,7 @@ Thumbs.db
 *.key
 *.pem
 credentials.json
+key.json
 
 # State files (may contain sensitive data)
 state.json
@@ -68,4 +69,8 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# CI/CD
+.github/workflows/*.local.yml
+act/
 

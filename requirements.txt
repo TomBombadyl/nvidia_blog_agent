@@ -24,3 +24,12 @@ python-dateutil>=2.8.0
 # MCP server dependencies (for nvidia_blog_mcp_server.py)
 mcp>=0.1.0
 python-dotenv>=1.0.0
+
+# Monitoring and observability
+google-cloud-monitoring>=2.15.0
+prometheus-client>=0.19.0
+
+# API enhancements
+slowapi>=0.1.9
+cachetools>=5.3.0
+python-multipart>=0.0.6

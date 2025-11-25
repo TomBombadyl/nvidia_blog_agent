@@ -19,7 +19,7 @@ from mcp.server.stdio import stdio_server
 load_dotenv()
 
 SERVICE_URL = os.environ.get("NVIDIA_BLOG_SERVICE_URL")  # Cloud Run URL
-INGEST_API_KEY = os.environ.get("INGEST_API_KEY")        # same value as the secret
+INGEST_API_KEY = os.environ.get("INGEST_API_KEY")  # same value as the secret
 
 if not SERVICE_URL:
     raise RuntimeError("NVIDIA_BLOG_SERVICE_URL must be set")
@@ -121,9 +121,7 @@ async def call_cloud_run_ingest() -> Dict[str, Any]:
 
 
 @app.call_tool()
-async def call_tool(
-    name: str, arguments: Dict[str, Any]
-) -> mcp_types.CallToolResult:
+async def call_tool(name: str, arguments: Dict[str, Any]) -> mcp_types.CallToolResult:
     try:
         if name == "ask_nvidia_blog":
             question = arguments.get("question", "").strip()
@@ -176,4 +174,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
