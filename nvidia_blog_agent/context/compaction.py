@@ -25,20 +25,20 @@ def append_ingestion_history_entry(
     timestamp: datetime | None = None,
 ) -> None:
     """Append a single ingestion metadata entry to the app-level ingestion history.
-    
+
     Each entry is stored as a dict with:
     - timestamp: ISO8601 string
     - metadata: The metadata dict (shallow copied)
-    
+
     The history is stored as a list under INGESTION_HISTORY_KEY. Entries are
     appended in chronological order, with the most recent entry at the end.
-    
+
     Args:
         state: MutableMapping representing session state (e.g., ADK Session.state).
         metadata: Dictionary containing ingestion metadata (e.g., from
                  get_last_ingestion_result_metadata()).
         timestamp: Optional datetime for the entry. If None, uses datetime.utcnow().
-    
+
     Example:
         >>> state = {}
         >>> metadata = {"discovered_count": 5, "new_count": 2}
@@ -48,12 +48,12 @@ def append_ingestion_history_entry(
     """
     if timestamp is None:
         timestamp = datetime.now(UTC)
-    
+
     entry = {
         "timestamp": timestamp.isoformat(),
         "metadata": dict(metadata),  # Shallow copy to avoid mutation
     }
-    
+
     history = state.get(INGESTION_HISTORY_KEY)
     if not isinstance(history, list):
         history = []
@@ -67,19 +67,19 @@ def compact_ingestion_history(
     max_entries: int = 10,
 ) -> None:
     """Compact the ingestion history by keeping at most max_entries entries.
-    
+
     This function implements a simple sliding window compaction:
     - If history has <= max_entries entries, no change
     - If history has more, drops the oldest entries, keeping only the most
       recent max_entries
-    
+
     Assumes entries are appended in chronological order (oldest first, newest last).
     Operates in-place on the state's INGESTION_HISTORY_KEY.
-    
+
     Args:
         state: MutableMapping representing session state (e.g., ADK Session.state).
         max_entries: Maximum number of entries to keep. Defaults to 10.
-    
+
     Example:
         >>> state = {INGESTION_HISTORY_KEY: [entry1, entry2, ..., entry15]}
         >>> compact_ingestion_history(state, max_entries=10)
@@ -89,15 +89,14 @@ def compact_ingestion_history(
     history = state.get(INGESTION_HISTORY_KEY)
     if not isinstance(history, list):
         return
-    
+
     if len(history) <= max_entries:
         return
-    
+
     # If max_entries is 0, clear the history
     if max_entries == 0:
         state[INGESTION_HISTORY_KEY] = []
         return
-    
+
     # Keep only the newest max_entries (assumes entries appended in time order)
     state[INGESTION_HISTORY_KEY] = history[-max_entries:]
-

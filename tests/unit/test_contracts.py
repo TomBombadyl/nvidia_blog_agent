@@ -29,7 +29,7 @@ class TestBlogPost:
         post = BlogPost(
             id="test-id-123",
             url="https://developer.nvidia.com/blog/test-post",
-            title="Test Blog Post"
+            title="Test Blog Post",
         )
         assert post.id == "test-id-123"
         assert str(post.url) == "https://developer.nvidia.com/blog/test-post"
@@ -47,7 +47,7 @@ class TestBlogPost:
             title="Full Blog Post",
             published_at=published,
             tags=["AI", "CUDA", "Deep Learning"],
-            source="nvidia_tech_blog"
+            source="nvidia_tech_blog",
         )
         assert post.published_at == published
         assert post.tags == ["AI", "CUDA", "Deep Learning"]
@@ -56,11 +56,7 @@ class TestBlogPost:
     def test_blog_post_id_validation(self):
         """Test that empty ID raises ValidationError."""
         with pytest.raises(ValidationError) as exc_info:
-            BlogPost(
-                id="",
-                url="https://developer.nvidia.com/blog/test",
-                title="Test"
-            )
+            BlogPost(id="", url="https://developer.nvidia.com/blog/test", title="Test")
         assert "ID cannot be empty" in str(exc_info.value)
 
     def test_blog_post_json_serialization(self):
@@ -71,20 +67,22 @@ class TestBlogPost:
             url="https://developer.nvidia.com/blog/test",
             title="Test Post",
             published_at=published,
-            tags=["AI"]
+            tags=["AI"],
         )
-        
+
         # model_dump() with custom serializer returns ISO format for datetime
         json_dict = post.model_dump()
         assert json_dict["id"] == "test-id"
         assert json_dict["title"] == "Test Post"
-        assert json_dict["published_at"] == published.isoformat()  # Serialized to ISO string
+        assert (
+            json_dict["published_at"] == published.isoformat()
+        )  # Serialized to ISO string
         assert json_dict["tags"] == ["AI"]
-        
+
         # model_dump(mode='json') also serializes to JSON-compatible types
-        json_serialized = post.model_dump(mode='json')
+        json_serialized = post.model_dump(mode="json")
         assert json_serialized["published_at"] == published.isoformat()
-        
+
         # Test JSON string serialization
         json_str = post.model_dump_json()
         assert "test-id" in json_str
@@ -98,7 +96,7 @@ class TestBlogPost:
             "url": "https://developer.nvidia.com/blog/test",
             "title": "Test Post",
             "published_at": "2024-01-15T10:30:00",
-            "tags": ["AI", "ML"]
+            "tags": ["AI", "ML"],
         }
         post = BlogPost.model_validate(json_data)
         assert post.id == "test-id"
@@ -118,7 +116,7 @@ class TestRawBlogContent:
             title="Test Post",
             html="<html><body><h1>Test</h1><p>Content</p></body></html>",
             text="Test\n\nContent",
-            sections=["Introduction", "Main Content", "Conclusion"]
+            sections=["Introduction", "Main Content", "Conclusion"],
         )
         assert content.blog_id == "test-id-123"
         assert content.title == "Test Post"
@@ -133,7 +131,7 @@ class TestRawBlogContent:
             url="https://developer.nvidia.com/blog/test",
             title="Test",
             html="<html>Test</html>",
-            text="Test"
+            text="Test",
         )
         assert content.sections == []
 
@@ -145,16 +143,16 @@ class TestRawBlogContent:
                 url="https://developer.nvidia.com/blog/test",
                 title="Test",
                 html="<html>Test</html>",
-                text="Test"
+                text="Test",
             )
-        
+
         with pytest.raises(ValidationError):
             RawBlogContent(
                 blog_id="test-id",
                 url="https://developer.nvidia.com/blog/test",
                 title="",
                 html="<html>Test</html>",
-                text="Test"
+                text="Test",
             )
 
     def test_raw_blog_content_json_serialization(self):
@@ -165,9 +163,9 @@ class TestRawBlogContent:
             title="Test Post",
             html="<html>Test</html>",
             text="Test",
-            sections=["Section 1", "Section 2"]
+            sections=["Section 1", "Section 2"],
         )
-        
+
         json_dict = content.model_dump()
         assert json_dict["blog_id"] == "test-id"
         assert json_dict["title"] == "Test Post"
@@ -187,12 +185,8 @@ class TestBlogSummary:
             published_at=published,
             executive_summary="This is a high-level summary of the blog post.",
             technical_summary="This is a detailed technical summary that explains the concepts, methodologies, and implementation details discussed in the blog post.",
-            bullet_points=[
-                "Key point 1",
-                "Key point 2",
-                "Key point 3"
-            ],
-            keywords=["AI", "CUDA", "Deep Learning", "NVIDIA"]
+            bullet_points=["Key point 1", "Key point 2", "Key point 3"],
+            keywords=["AI", "CUDA", "Deep Learning", "NVIDIA"],
         )
         assert summary.blog_id == "test-id-123"
         assert summary.executive_summary.startswith("This is")
@@ -207,7 +201,7 @@ class TestBlogSummary:
             title="Test",
             url="https://developer.nvidia.com/blog/test",
             executive_summary="Short summary.",
-            technical_summary="This is a detailed technical summary that provides comprehensive information about the topic."
+            technical_summary="This is a detailed technical summary that provides comprehensive information about the topic.",
         )
         assert summary.bullet_points == []
         assert summary.keywords == []
@@ -221,7 +215,7 @@ class TestBlogSummary:
             url="https://developer.nvidia.com/blog/test",
             executive_summary="This is a valid executive summary that meets the minimum length requirement.",
             technical_summary="Detailed technical summary with enough content to pass validation and meet the minimum character requirement.",
-            keywords=["AI", "ai", "CUDA", "cuda", "Deep Learning", "  deep learning  "]
+            keywords=["AI", "ai", "CUDA", "cuda", "Deep Learning", "  deep learning  "],
         )
         # Should be deduplicated and normalized
         assert "ai" in summary.keywords
@@ -241,9 +235,9 @@ class TestBlogSummary:
             executive_summary="Executive summary here with enough content.",
             technical_summary="Technical details here with comprehensive information about the topic and implementation details that meet the minimum length requirement.",
             bullet_points=["Point 1", "Point 2"],
-            keywords=["AI", "ML"]
+            keywords=["AI", "ML"],
         )
-        
+
         doc = summary.to_rag_document()
         assert "Title: Test Blog" in doc
         assert "Executive Summary:" in doc
@@ -263,16 +257,16 @@ class TestBlogSummary:
                 title="Test",
                 url="https://developer.nvidia.com/blog/test",
                 executive_summary="Short",  # Too short
-                technical_summary="Detailed technical summary with enough content."
+                technical_summary="Detailed technical summary with enough content.",
             )
-        
+
         with pytest.raises(ValidationError):
             BlogSummary(
                 blog_id="test-id",
                 title="Test",
                 url="https://developer.nvidia.com/blog/test",
                 executive_summary="This is a valid executive summary.",
-                technical_summary="Short"  # Too short
+                technical_summary="Short",  # Too short
             )
 
     def test_blog_summary_json_serialization(self):
@@ -282,13 +276,13 @@ class TestBlogSummary:
             title="Test",
             url="https://developer.nvidia.com/blog/test",
             executive_summary="Executive summary.",
-            technical_summary="Detailed technical summary with comprehensive information."
+            technical_summary="Detailed technical summary with comprehensive information.",
         )
-        
+
         json_dict = summary.model_dump()
         assert json_dict["blog_id"] == "test-id"
         assert json_dict["executive_summary"] == "Executive summary."
-        
+
         json_str = summary.model_dump_json()
         assert "test-id" in json_str
 
@@ -304,7 +298,7 @@ class TestRetrievedDoc:
             url="https://developer.nvidia.com/blog/test",
             snippet="This is a relevant snippet from the document.",
             score=0.85,
-            metadata={"source": "rag", "rank": 1}
+            metadata={"source": "rag", "rank": 1},
         )
         assert doc.blog_id == "test-id-123"
         assert doc.title == "Test Blog Post"
@@ -319,7 +313,7 @@ class TestRetrievedDoc:
             title="Test",
             url="https://developer.nvidia.com/blog/test",
             snippet="Snippet",
-            score=0.5
+            score=0.5,
         )
         assert doc.metadata == {}
 
@@ -331,16 +325,16 @@ class TestRetrievedDoc:
             title="Test",
             url="https://developer.nvidia.com/blog/test",
             snippet="Test",
-            score=0.0
+            score=0.0,
         )
         RetrievedDoc(
             blog_id="test-id",
             title="Test",
             url="https://developer.nvidia.com/blog/test",
             snippet="Test",
-            score=1.0
+            score=1.0,
         )
-        
+
         # Invalid scores
         with pytest.raises(ValidationError):
             RetrievedDoc(
@@ -348,16 +342,16 @@ class TestRetrievedDoc:
                 title="Test",
                 url="https://developer.nvidia.com/blog/test",
                 snippet="Test",
-                score=-0.1
+                score=-0.1,
             )
-        
+
         with pytest.raises(ValidationError):
             RetrievedDoc(
                 blog_id="test-id",
                 title="Test",
                 url="https://developer.nvidia.com/blog/test",
                 snippet="Test",
-                score=1.1
+                score=1.1,
             )
 
     def test_retrieved_doc_json_serialization(self):
@@ -368,9 +362,9 @@ class TestRetrievedDoc:
             url="https://developer.nvidia.com/blog/test",
             snippet="Snippet text",
             score=0.75,
-            metadata={"key": "value"}
+            metadata={"key": "value"},
         )
-        
+
         json_dict = doc.model_dump()
         assert json_dict["blog_id"] == "test-id"
         assert json_dict["score"] == 0.75
@@ -404,9 +398,9 @@ class TestUtilityFunctions:
             published_at=published,
             executive_summary="Executive summary with sufficient detail.",
             technical_summary="Technical summary with comprehensive detail and enough content to meet validation requirements for the technical summary field.",
-            keywords=["AI", "ML"]
+            keywords=["AI", "ML"],
         )
-        
+
         rag_dict = blog_summary_to_dict(summary)
         assert "document" in rag_dict
         assert rag_dict["doc_index"] == "test-id-123"
@@ -417,4 +411,3 @@ class TestUtilityFunctions:
         assert rag_dict["doc_metadata"]["keywords"] == ["ai", "ml"]
         assert "Title: Test Blog" in rag_dict["document"]
         assert "Executive summary" in rag_dict["document"]
-

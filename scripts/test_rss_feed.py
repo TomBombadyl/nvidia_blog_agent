@@ -23,7 +23,7 @@ async def main():
     """Test RSS feed parsing."""
     print("Testing RSS feed parsing...")
     print()
-    
+
     # Fetch the feed
     print("Fetching RSS feed from https://developer.nvidia.com/blog/feed/...")
     try:
@@ -33,7 +33,7 @@ async def main():
     except Exception as e:
         print(f"[ERROR] Failed to fetch feed: {e}")
         return 1
-    
+
     # Parse the feed
     print("Parsing feed...")
     try:
@@ -43,23 +43,24 @@ async def main():
     except Exception as e:
         print(f"[ERROR] Failed to parse feed: {e}")
         import traceback
+
         traceback.print_exc()
         return 1
-    
+
     if not posts:
         print("[WARNING] No posts found in feed")
         return 1
-    
+
     # Analyze results
     posts_with_content = [p for p in posts if p.content]
     posts_without_content = [p for p in posts if not p.content]
-    
+
     print("Summary:")
     print(f"   Total posts: {len(posts)}")
     print(f"   Posts with content: {len(posts_with_content)}")
     print(f"   Posts without content: {len(posts_without_content)}")
     print()
-    
+
     # Show sample posts
     print("Sample posts (first 3):")
     for i, post in enumerate(posts[:3], 1):
@@ -70,33 +71,42 @@ async def main():
         has_content = "[YES]" if post.content else "[NO]"
         print(f"      Content from feed: {has_content}")
         if post.content:
-            content_preview = post.content[:100].replace('\n', ' ')
+            content_preview = post.content[:100].replace("\n", " ")
             print(f"      Content preview: {content_preview}...")
-    
+
     print()
-    
+
     # Verify content quality
     if posts_with_content:
-        avg_content_length = sum(len(p.content) for p in posts_with_content) / len(posts_with_content)
+        avg_content_length = sum(len(p.content) for p in posts_with_content) / len(
+            posts_with_content
+        )
         print(f"Average content length: {avg_content_length:.0f} characters")
-        
+
         # Check if content looks like HTML
-        html_posts = [p for p in posts_with_content if '<' in p.content and '>' in p.content]
-        print(f"   Posts with HTML content: {len(html_posts)}/{len(posts_with_content)}")
-    
+        html_posts = [
+            p for p in posts_with_content if "<" in p.content and ">" in p.content
+        ]
+        print(
+            f"   Posts with HTML content: {len(html_posts)}/{len(posts_with_content)}"
+        )
+
     print()
     print("[OK] RSS feed parsing test completed successfully!")
-    
+
     if len(posts_with_content) > 0:
-        print(f"[SUCCESS] Successfully extracted content from {len(posts_with_content)} posts!")
+        print(
+            f"[SUCCESS] Successfully extracted content from {len(posts_with_content)} posts!"
+        )
         print("   This means we can avoid fetching individual posts and 403 errors.")
     else:
-        print("[WARNING] No posts have content in the feed. Will need to fetch individual posts.")
-    
+        print(
+            "[WARNING] No posts have content in the feed. Will need to fetch individual posts."
+        )
+
     return 0
 
 
 if __name__ == "__main__":
     exit_code = asyncio.run(main())
     sys.exit(exit_code)
-

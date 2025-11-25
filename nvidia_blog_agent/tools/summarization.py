@@ -17,21 +17,21 @@ from nvidia_blog_agent.contracts.blog_models import RawBlogContent, BlogSummary
 
 def build_summary_prompt(raw: RawBlogContent, *, max_text_chars: int = 4000) -> str:
     """Build a prompt for summarizing a blog post into structured JSON.
-    
+
     The prompt instructs the LLM to return strict JSON with:
     - executive_summary: High-level summary (1-3 sentences)
     - technical_summary: Detailed technical summary (2-5 paragraphs)
     - bullet_points: List of key takeaways
     - keywords: List of relevant keywords/topics
-    
+
     Args:
         raw: RawBlogContent object containing the blog post content.
         max_text_chars: Maximum number of characters to include from raw.text.
                         Defaults to 4000. Text will be truncated if longer.
-    
+
     Returns:
         A formatted prompt string ready to send to an LLM.
-    
+
     Example:
         >>> raw = RawBlogContent(
         ...     blog_id="test-id",
@@ -49,13 +49,14 @@ def build_summary_prompt(raw: RawBlogContent, *, max_text_chars: int = 4000) -> 
     text_to_summarize = raw.text
     if len(text_to_summarize) > max_text_chars:
         text_to_summarize = text_to_summarize[:max_text_chars] + "..."
-    
+
     # Build sections text if available
     sections_text = ""
     if raw.sections:
-        sections_text = "\n\n".join(f"Section {i+1}:\n{section}" 
-                                   for i, section in enumerate(raw.sections))
-    
+        sections_text = "\n\n".join(
+            f"Section {i + 1}:\n{section}" for i, section in enumerate(raw.sections)
+        )
+
     prompt = f"""You are an expert technical writer summarizing NVIDIA technical blog posts.
 
 Please analyze the following blog post and provide a comprehensive summary in JSON format.
@@ -66,14 +67,14 @@ Blog Post URL: {raw.url}
 Content:
 {text_to_summarize}
 """
-    
+
     if sections_text:
         prompt += f"""
 
 Structured Sections:
 {sections_text}
 """
-    
+
     prompt += """
 
 Please provide a summary in the following JSON format (strict JSON, no markdown, no code blocks):
@@ -101,7 +102,7 @@ Requirements:
 
 Return ONLY valid JSON. Do not include any markdown formatting, code block markers, or explanatory text outside the JSON object.
 """
-    
+
     return prompt
 
 
@@ -109,28 +110,28 @@ def parse_summary_json(
     raw: RawBlogContent,
     json_text: str,
     published_at: Optional[datetime] = None,
-    categories: Optional[List[str]] = None
+    categories: Optional[List[str]] = None,
 ) -> BlogSummary:
     """Parse LLM JSON response into a BlogSummary object.
-    
+
     This function handles common LLM response formats:
     - JSON wrapped in markdown code blocks (```json ... ```)
     - JSON with leading/trailing whitespace
     - Plain JSON strings
-    
+
     Args:
         raw: RawBlogContent object used to generate the summary.
         json_text: JSON string response from the LLM (may include markdown formatting).
         published_at: Optional publication timestamp. If None, will be None in BlogSummary.
         categories: Optional list of categories from the original BlogPost. If None, uses raw.categories.
-    
+
     Returns:
         BlogSummary object with parsed data.
-    
+
     Raises:
         ValueError: If JSON cannot be parsed or required fields are missing.
         ValidationError: If parsed data doesn't meet BlogSummary validation requirements.
-    
+
     Example:
         >>> raw = RawBlogContent(
         ...     blog_id="test-id",
@@ -179,7 +180,7 @@ def parse_summary_json(
     """
     # Clean the JSON text - remove markdown code blocks if present
     cleaned_json = json_text.strip()
-    
+
     # Remove markdown code block markers (```json ... ``` or ``` ... ```)
     if cleaned_json.startswith("```"):
         # Find the first newline after ```
@@ -189,40 +190,48 @@ def parse_summary_json(
         # Remove trailing ```
         if cleaned_json.endswith("```"):
             cleaned_json = cleaned_json[:-3].strip()
-    
+
     # Try to extract JSON if it's wrapped in other text
     # Look for JSON object pattern: { ... }
-    json_match = re.search(r'\{.*\}', cleaned_json, re.DOTALL)
+    json_match = re.search(r"\{.*\}", cleaned_json, re.DOTALL)
     if json_match:
         cleaned_json = json_match.group(0)
-    
+
     # Parse JSON
     try:
         data = json.loads(cleaned_json)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Failed to parse JSON from LLM response: {e}. Response was: {json_text[:200]}...")
-    
+        raise ValueError(
+            f"Failed to parse JSON from LLM response: {e}. Response was: {json_text[:200]}..."
+        )
+
     # Extract fields with validation
     executive_summary = data.get("executive_summary", "")
     technical_summary = data.get("technical_summary", "")
     bullet_points = data.get("bullet_points", [])
     keywords = data.get("keywords", [])
-    
+
     # Ensure bullet_points and keywords are lists
     if not isinstance(bullet_points, list):
         bullet_points = []
     if not isinstance(keywords, list):
         keywords = []
-    
+
     # Merge categories into keywords (use raw.categories if categories not provided)
-    categories_to_merge = categories if categories is not None else (raw.categories if hasattr(raw, 'categories') else [])
+    categories_to_merge = (
+        categories
+        if categories is not None
+        else (raw.categories if hasattr(raw, "categories") else [])
+    )
     if categories_to_merge:
-        normalized_categories = [cat.strip().lower() for cat in categories_to_merge if cat.strip()]
+        normalized_categories = [
+            cat.strip().lower() for cat in categories_to_merge if cat.strip()
+        ]
         # Add categories to keywords if not already present
         for cat in normalized_categories:
             if cat not in keywords:
                 keywords.append(cat)
-    
+
     # Create BlogSummary
     return BlogSummary(
         blog_id=raw.blog_id,
@@ -232,6 +241,5 @@ def parse_summary_json(
         executive_summary=executive_summary,
         technical_summary=technical_summary,
         bullet_points=bullet_points,
-        keywords=keywords
+        keywords=keywords,
     )
-

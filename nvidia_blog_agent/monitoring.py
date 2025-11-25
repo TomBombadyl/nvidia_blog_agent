@@ -12,7 +12,7 @@ import time
 import json
 import logging
 from typing import Optional, Dict, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from datetime import datetime, UTC
 from collections import defaultdict
 from threading import Lock
@@ -20,7 +20,7 @@ from threading import Lock
 # Try to import Cloud Monitoring (optional)
 try:
     from google.cloud import monitoring_v3
-    from google.api import metric_pb2
+
     CLOUD_MONITORING_AVAILABLE = True
 except ImportError:
     CLOUD_MONITORING_AVAILABLE = False
@@ -29,6 +29,7 @@ except ImportError:
 @dataclass
 class RequestMetrics:
     """Metrics for a single request."""
+
     endpoint: str
     method: str
     status_code: int
@@ -38,7 +39,7 @@ class RequestMetrics:
 
 class MetricsCollector:
     """Collects and aggregates application metrics."""
-    
+
     def __init__(self):
         self._request_counts = defaultdict(int)
         self._error_counts = defaultdict(int)
@@ -46,16 +47,16 @@ class MetricsCollector:
         self._lock = Lock()
         self._total_requests = 0
         self._total_errors = 0
-        
+
     def record_request(
         self,
         endpoint: str,
         method: str = "GET",
         status_code: int = 200,
-        latency_ms: float = 0.0
+        latency_ms: float = 0.0,
     ):
         """Record a request metric.
-        
+
         Args:
             endpoint: The endpoint path (e.g., "/ask", "/health")
             method: HTTP method (GET, POST, etc.)
@@ -66,19 +67,19 @@ class MetricsCollector:
             self._total_requests += 1
             key = f"{method} {endpoint}"
             self._request_counts[key] += 1
-            
+
             if status_code >= 400:
                 self._error_counts[key] += 1
                 self._total_errors += 1
-            
+
             self._latencies[key].append(latency_ms)
             # Keep only last 1000 latencies per endpoint
             if len(self._latencies[key]) > 1000:
                 self._latencies[key] = self._latencies[key][-1000:]
-    
+
     def get_stats(self) -> Dict[str, Any]:
         """Get aggregated statistics.
-        
+
         Returns:
             Dictionary with request counts, error rates, and latency stats
         """
@@ -91,9 +92,9 @@ class MetricsCollector:
                     if self._total_requests > 0
                     else 0.0
                 ),
-                "endpoints": {}
+                "endpoints": {},
             }
-            
+
             for key in self._request_counts:
                 latencies = self._latencies.get(key, [])
                 stats["endpoints"][key] = {
@@ -105,14 +106,10 @@ class MetricsCollector:
                         else 0.0
                     ),
                     "avg_latency_ms": (
-                        sum(latencies) / len(latencies)
-                        if latencies
-                        else 0.0
+                        sum(latencies) / len(latencies) if latencies else 0.0
                     ),
                     "p50_latency_ms": (
-                        sorted(latencies)[len(latencies) // 2]
-                        if latencies
-                        else 0.0
+                        sorted(latencies)[len(latencies) // 2] if latencies else 0.0
                     ),
                     "p95_latency_ms": (
                         sorted(latencies)[int(len(latencies) * 0.95)]
@@ -125,9 +122,9 @@ class MetricsCollector:
                         else 0.0
                     ),
                 }
-            
+
             return stats
-    
+
     def reset(self):
         """Reset all metrics."""
         with self._lock:
@@ -149,11 +146,11 @@ def get_metrics_collector() -> MetricsCollector:
 
 class StructuredLogger:
     """Structured JSON logger for better observability."""
-    
+
     def __init__(self, name: str):
         self.logger = logging.getLogger(name)
         self.name = name
-    
+
     def _log(self, level: int, message: str, **kwargs):
         """Internal logging method with structured data."""
         log_data = {
@@ -161,9 +158,9 @@ class StructuredLogger:
             "level": logging.getLevelName(level),
             "logger": self.name,
             "message": message,
-            **kwargs
+            **kwargs,
         }
-        
+
         # Use JSON format if structured logging is enabled
         if os.environ.get("STRUCTURED_LOGGING", "false").lower() == "true":
             self.logger.log(level, json.dumps(log_data))
@@ -171,23 +168,23 @@ class StructuredLogger:
             # Human-readable format
             extra_info = " ".join(f"{k}={v}" for k, v in kwargs.items())
             self.logger.log(level, f"{message} {extra_info}".strip())
-    
+
     def debug(self, message: str, **kwargs):
         """Log debug message with structured data."""
         self._log(logging.DEBUG, message, **kwargs)
-    
+
     def info(self, message: str, **kwargs):
         """Log info message with structured data."""
         self._log(logging.INFO, message, **kwargs)
-    
+
     def warning(self, message: str, **kwargs):
         """Log warning message with structured data."""
         self._log(logging.WARNING, message, **kwargs)
-    
+
     def error(self, message: str, **kwargs):
         """Log error message with structured data."""
         self._log(logging.ERROR, message, **kwargs)
-    
+
     def exception(self, message: str, **kwargs):
         """Log exception with structured data."""
         self._log(logging.ERROR, message, exc_info=True, **kwargs)
@@ -195,79 +192,73 @@ class StructuredLogger:
 
 class HealthChecker:
     """Health check with dependency status."""
-    
+
     def __init__(self):
         self.dependencies: Dict[str, callable] = {}
-    
+
     def register_dependency(self, name: str, check_func: callable):
         """Register a dependency health check.
-        
+
         Args:
             name: Dependency name (e.g., "rag_backend", "gemini_api")
             check_func: Async function that returns (healthy: bool, message: str)
         """
         self.dependencies[name] = check_func
-    
+
     async def check_all(self) -> Dict[str, Any]:
         """Check all registered dependencies.
-        
+
         Returns:
             Dictionary with overall status and individual dependency statuses
         """
         results = {
             "status": "healthy",
             "timestamp": datetime.now(UTC).isoformat(),
-            "dependencies": {}
+            "dependencies": {},
         }
-        
+
         all_healthy = True
         for name, check_func in self.dependencies.items():
             try:
                 healthy, message = await check_func()
                 results["dependencies"][name] = {
                     "status": "healthy" if healthy else "unhealthy",
-                    "message": message
+                    "message": message,
                 }
                 if not healthy:
                     all_healthy = False
             except Exception as e:
-                results["dependencies"][name] = {
-                    "status": "error",
-                    "message": str(e)
-                }
+                results["dependencies"][name] = {"status": "error", "message": str(e)}
                 all_healthy = False
-        
+
         if not all_healthy:
             results["status"] = "degraded"
-        
+
         return results
 
 
 class CloudMonitoringExporter:
     """Exports metrics to Google Cloud Monitoring."""
-    
+
     def __init__(self, project_id: Optional[str] = None):
         if not CLOUD_MONITORING_AVAILABLE:
             raise ImportError(
                 "google-cloud-monitoring is not installed. "
                 "Install with: pip install google-cloud-monitoring"
             )
-        
+
         self.project_id = project_id or os.environ.get("GOOGLE_CLOUD_PROJECT")
         if not self.project_id:
             raise ValueError("GOOGLE_CLOUD_PROJECT must be set for Cloud Monitoring")
-        
+
         self.client = monitoring_v3.MetricServiceClient()
         self.project_name = f"projects/{self.project_id}"
-    
+
     def write_metric(
-        self,
-        metric_type: str,
-        value: float,
-        labels: Optional[Dict[str, str]] = None
+        self, metric_type: str, value: float, labels: Optional[Dict[str, str]] = None
     ):
         """Write a metric to Cloud Monitoring.
-        
+
         Args:
             metric_type: Metric type (e.g., "custom.googleapis.com/api/request_count")
             value: Metric value
@@ -276,23 +267,20 @@ class CloudMonitoringExporter:
         series = monitoring_v3.TimeSeries()
         series.metric.type = metric_type
         series.resource.type = "global"
-        
+
         if labels:
             for key, value in labels.items():
                 series.metric.labels[key] = value
-        
+
         point = monitoring_v3.Point()
         point.value.double_value = value
         point.interval.end_time.seconds = int(time.time())
         point.interval.end_time.nanos = int((time.time() % 1) * 1e9)
-        
+
         series.points = [point]
-        
+
         try:
-            self.client.create_time_series(
-                name=self.project_name,
-                time_series=[series]
-            )
+            self.client.create_time_series(name=self.project_name, time_series=[series])
         except Exception as e:
             # Log but don't fail on monitoring errors
             logging.warning(f"Failed to write metric to Cloud Monitoring: {e}")
@@ -301,4 +289,3 @@ class CloudMonitoringExporter:
 def create_structured_logger(name: str) -> StructuredLogger:
     """Create a structured logger instance."""
     return StructuredLogger(name)
-

@@ -25,16 +25,16 @@ APP_LAST_INGESTION_RESULTS_KEY = f"{APP_PREFIX}last_ingestion_results"
 
 def get_existing_ids_from_state(state: MutableMapping[str, Any]) -> Set[str]:
     """Retrieve the set of previously-seen blog IDs from the state.
-    
+
     Looks under APP_LAST_SEEN_IDS_KEY. If missing or None, returns an empty set.
     Values are normalized to a set of strings, accepting list, set, tuple, etc.
-    
+
     Args:
         state: MutableMapping representing session state (e.g., ADK Session.state).
-    
+
     Returns:
         Set of string IDs. Empty set if key is missing or value is None.
-    
+
     Example:
         >>> state = {"app:last_seen_blog_ids": ["id1", "id2", "id3"]}
         >>> ids = get_existing_ids_from_state(state)
@@ -53,19 +53,19 @@ def update_existing_ids_in_state(
     new_posts: Iterable[BlogPost],
 ) -> None:
     """Update the set of previously-seen blog IDs in the state with new_posts.
-    
+
     This function:
     1. Reads existing IDs via get_existing_ids_from_state()
     2. Adds blog.id for each new post
     3. Writes back a sorted list of IDs to APP_LAST_SEEN_IDS_KEY
-    
+
     The list is stored sorted for portability and JSON-friendliness.
     The helper always returns a set when reading, but stores as a list.
-    
+
     Args:
         state: MutableMapping representing session state (e.g., ADK Session.state).
         new_posts: Iterable of BlogPost objects whose IDs should be added.
-    
+
     Example:
         >>> state = {}
         >>> posts = [
@@ -88,18 +88,18 @@ def store_last_ingestion_result_metadata(
     result: Any,  # IngestionResult - using Any to avoid circular import
 ) -> None:
     """Store lightweight metadata about the last ingestion run.
-    
+
     Stores a JSON-serializable metadata structure under APP_LAST_INGESTION_RESULTS_KEY.
     The metadata includes counts and up to 5 most recent titles, avoiding storage
     of the full IngestionResult which could be large.
-    
+
     Args:
         state: MutableMapping representing session state (e.g., ADK Session.state).
         result: IngestionResult object from run_ingestion_pipeline().
-    
+
     Raises:
         TypeError: If result is not an IngestionResult instance.
-    
+
     Example:
         >>> from nvidia_blog_agent.agents.workflow import IngestionResult
         >>> state = {}
@@ -116,14 +116,14 @@ def store_last_ingestion_result_metadata(
     """
     # Local import to avoid circular dependency
     from nvidia_blog_agent.agents.workflow import IngestionResult
-    
+
     if not isinstance(result, IngestionResult):
         raise TypeError("result must be an IngestionResult")
-    
+
     # Store up to 5 most recent titles
     N = 5
     last_titles = [s.title for s in result.summaries[:N]]
-    
+
     meta: Dict[str, Any] = {
         "discovered_count": len(result.discovered_posts),
         "new_count": len(result.new_posts),
@@ -138,13 +138,13 @@ def get_last_ingestion_result_metadata(
     state: MutableMapping[str, Any],
 ) -> Dict[str, Any]:
     """Get the stored metadata for the last ingestion run.
-    
+
     Returns a shallow copy of the metadata dict to avoid accidental in-place mutation.
     Returns an empty dict if nothing was stored or if the value is not a dict.
-    
+
     Args:
         state: MutableMapping representing session state (e.g., ADK Session.state).
-    
+
     Returns:
         Dictionary containing ingestion metadata with keys:
         - discovered_count: int
@@ -153,7 +153,7 @@ def get_last_ingestion_result_metadata(
         - summaries_count: int
         - last_titles: List[str] (up to 5 titles)
         Empty dict if no metadata is stored.
-    
+
     Example:
         >>> state = {APP_LAST_INGESTION_RESULTS_KEY: {"discovered_count": 5, ...}}
         >>> metadata = get_last_ingestion_result_metadata(state)
@@ -165,4 +165,3 @@ def get_last_ingestion_result_metadata(
         return {}
     # Return shallow copy to avoid accidental mutation
     return dict(value)
-
