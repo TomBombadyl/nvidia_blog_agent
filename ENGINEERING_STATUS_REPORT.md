@@ -6,7 +6,7 @@ This document provides technical details about the NVIDIA Tech Blog Agent system
 
 **Service URL**: `https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app`  
 **Status**: ✅ Production deployed and operational  
-**RAG Corpus ID**: `6917529027641081856`  
+**RAG Corpus ID**: Configured via `RAG_CORPUS_ID` environment variable  
 **Location**: `us-east5` (Columbus)
 
 For complete project overview, see [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md).

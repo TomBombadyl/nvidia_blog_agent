@@ -123,7 +123,8 @@ class GeminiSummarizer(SummarizerLike):
             summary = parse_summary_json(
                 raw,
                 json_text,
-                published_at=raw.published_at if hasattr(raw, 'published_at') else None
+                published_at=raw.published_at if hasattr(raw, 'published_at') else None,
+                categories=raw.categories
             )
             summaries.append(summary)
         

@@ -136,11 +136,12 @@ class SummarizerAgent(LlmAgent):
             
             # Parse JSON response into BlogSummary
             # Use published_at from RawBlogContent if available (would need to track BlogPost)
-            # For now, we'll use None and let it be set from the original BlogPost if needed
+            # For now, we'll use None and let it be set from the original BlogPost if stored
             summary = parse_summary_json(
                 raw_content,
                 json_text,
-                published_at=None  # Could be extracted from related BlogPost if stored
+                published_at=None,  # Could be extracted from related BlogPost if stored
+                categories=raw_content.categories
             )
             
             summaries.append(summary)
@@ -192,7 +193,7 @@ class SummarizerAgentStub:
             
             prompt = build_summary_prompt(raw_content, max_text_chars=self.max_text_chars)
             json_text = self.llm_function(prompt)
-            summary = parse_summary_json(raw_content, json_text, published_at=None)
+            summary = parse_summary_json(raw_content, json_text, published_at=None, categories=raw_content.categories)
             summaries.append(summary)
         
         session.state["blog_summaries"] = summaries

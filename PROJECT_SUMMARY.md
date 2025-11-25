@@ -38,7 +38,7 @@ A production-ready RAG (Retrieval-Augmented Generation) system that automaticall
    - **Endpoint**: `/ingest` with API key protection
 
 4. **Vertex AI RAG Engine** ✅
-   - **Corpus ID**: `6917529027641081856`
+   - **Corpus ID**: Configured via `RAG_CORPUS_ID` environment variable
    - **Location**: `us-east5` (Columbus)
    - **Backend**: Vertex AI Search
    - **Embedding Model**: `text-embedding-005`
@@ -139,13 +139,13 @@ Query → Vertex AI RAG Engine → Retrieval → Gemini 2.0 Flash → Answer
 
 - `GOOGLE_CLOUD_PROJECT=nvidia-blog-agent`
 - `USE_VERTEX_RAG=true`
-- `RAG_CORPUS_ID=6917529027641081856`
+- `RAG_CORPUS_ID=YOUR_CORPUS_ID` (get from Vertex AI RAG Engine)
 - `VERTEX_LOCATION=us-east5`
 - `RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs`
 - `STATE_PATH=gs://nvidia-blog-agent-state/state.json`
 - `GEMINI_MODEL_NAME=gemini-2.0-flash-001`
 - `GEMINI_LOCATION=us-east5`
-- `INGEST_API_KEY=emik6JhmdDhsVCHxjfRqz1tgDEnxljPEWh2WTXwyPMw` (protected)
+- `INGEST_API_KEY=YOUR_API_KEY` (generated during deployment, stored in Cloud Run env vars)
 
 ## 🚀 Deployment Scripts
 
@@ -160,7 +160,7 @@ Query → Vertex AI RAG Engine → Retrieval → Gemini 2.0 Flash → Answer
 
 **Usage**:
 ```powershell
-$env:RAG_CORPUS_ID = "6917529027641081856"
+$env:RAG_CORPUS_ID = "YOUR_CORPUS_ID"
 .\deploy_cloud_run.ps1
 ```
 
@@ -173,8 +173,8 @@ $env:RAG_CORPUS_ID = "6917529027641081856"
 
 **Usage**:
 ```powershell
-$env:INGEST_API_KEY='your-key'
-$env:SERVICE_URL='your-service-url'
+$env:INGEST_API_KEY='YOUR_API_KEY'  # From deployment output
+$env:SERVICE_URL='YOUR_SERVICE_URL'  # From deployment output
 .\setup_scheduler.ps1
 ```
 

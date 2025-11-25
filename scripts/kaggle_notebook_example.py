@@ -16,8 +16,8 @@ from typing import Dict, Any, List
 
 
 # Update this with your Cloud Run service URL
-# Update with your actual service URL from deployment
-SERVICE_URL = "https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app"
+# Get it from: gcloud run services describe nvidia-blog-agent --region us-central1 --format='value(status.url)'
+SERVICE_URL = "https://YOUR-SERVICE-URL-HERE.run.app"  # Replace with your actual service URL
 
 
 def ask(question: str, top_k: int = 8, timeout: int = 60) -> Dict[str, Any]:
