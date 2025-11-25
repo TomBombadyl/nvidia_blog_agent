@@ -176,7 +176,7 @@ async def lifespan(app: FastAPI):
                 # Simple health check: try to retrieve with a test query
                 await retrieve_client.retrieve("test", k=1)
                 return True, "RAG backend is accessible"
-            except Exception:
+            except Exception as e:
                 return False, f"RAG backend error: {str(e)}"
 
         async def check_qa_agent():
@@ -319,7 +319,6 @@ async def ask_question(request: Request, ask_request: AskRequest):
     start_time = time.time()
     cache = get_response_cache()
     session_manager = get_session_manager()
-    cached = False
 
     try:
         logger.info(

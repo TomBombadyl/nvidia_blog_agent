@@ -329,7 +329,6 @@ async def test_pipeline_with_existing_ids():
     discovered, _ = discover_new_posts_from_feed(feed_html, existing_ids=None)
     existing_id = discovered[0].id  # Mark first post as existing
 
-    state = {}
     existing_ids = {existing_id}
 
     # Setup stubs
