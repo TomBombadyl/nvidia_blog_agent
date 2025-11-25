@@ -2,6 +2,15 @@
 
 This guide provides complete instructions for setting up Vertex AI RAG Engine and deploying the NVIDIA Blog Agent to Google Cloud Run.
 
+## 🎉 Current Status: PRODUCTION DEPLOYED
+
+**Service URL**: `https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app`  
+**Status**: ✅ Fully operational  
+**Cloud Scheduler**: ✅ Enabled (daily at 7:00 AM ET)  
+**RAG Corpus**: ✅ Active with 100+ documents indexed
+
+For complete project overview, see [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md).
+
 ## Overview
 
 This guide covers:
@@ -294,51 +303,52 @@ gsutil iam ch \
     gs://nvidia-blog-agent-state
 ```
 
-### Step 3: Build and Push Container Image
+### Step 3: Deploy Using Automated Script (Recommended)
 
-#### Option A: Using Cloud Build (Recommended)
+The easiest way to deploy is using the automated PowerShell script:
+
+```powershell
+# Set your RAG corpus ID
+$env:RAG_CORPUS_ID = "YOUR_CORPUS_ID"
+
+# Run the deployment script
+.\deploy_cloud_run.ps1
+```
+
+The script automatically:
+- ✅ Creates Artifact Registry repository if needed
+- ✅ Configures all required IAM permissions (Cloud Build, Compute Engine, Artifact Registry)
+- ✅ Builds and pushes the Docker image using Cloud Build
+- ✅ Deploys to Cloud Run with all environment variables
+- ✅ Handles retries and error recovery
+
+**Note**: The script uses Artifact Registry (not GCR) and handles all permission setup automatically.
+
+### Step 4: Manual Deployment (Alternative)
+
+If you prefer manual deployment or need to customize the process:
+
+#### Build and Push Container Image
 
 ```bash
-# Build and push using Cloud Build
-gcloud builds submit --tag gcr.io/$PROJECT_ID/nvidia-blog-agent:latest
-
-# Or use Artifact Registry (recommended for new projects)
-# First, create an Artifact Registry repository:
+# Create Artifact Registry repository (if not exists)
 gcloud artifacts repositories create nvidia-blog-agent \
     --repository-format=docker \
     --location=us-central1 \
     --project=$PROJECT_ID
 
-# Then build and push:
+# Build and push using Cloud Build
 gcloud builds submit --tag us-central1-docker.pkg.dev/$PROJECT_ID/nvidia-blog-agent/nvidia-blog-agent:latest
 ```
 
-#### Option B: Build Locally and Push
-
-```bash
-# Build locally
-docker build -t gcr.io/$PROJECT_ID/nvidia-blog-agent:latest .
-
-# Authenticate Docker
-gcloud auth configure-docker
-
-# Push to Container Registry
-docker push gcr.io/$PROJECT_ID/nvidia-blog-agent:latest
-
-# Or push to Artifact Registry
-docker tag gcr.io/$PROJECT_ID/nvidia-blog-agent:latest \
-    us-central1-docker.pkg.dev/$PROJECT_ID/nvidia-blog-agent/nvidia-blog-agent:latest
-docker push us-central1-docker.pkg.dev/$PROJECT_ID/nvidia-blog-agent/nvidia-blog-agent:latest
-```
-
-### Step 4: Deploy to Cloud Run
+#### Deploy to Cloud Run
 
 Deploy the service with proper configuration:
 
 ```bash
 # Deploy to Cloud Run
 gcloud run deploy nvidia-blog-agent \
-    --image gcr.io/$PROJECT_ID/nvidia-blog-agent:latest \
+    --image us-central1-docker.pkg.dev/$PROJECT_ID/nvidia-blog-agent/nvidia-blog-agent:latest \
     --platform managed \
     --region us-central1 \
     --service-account nvidia-blog-agent-sa@${PROJECT_ID}.iam.gserviceaccount.com \
@@ -359,6 +369,8 @@ gcloud run deploy nvidia-blog-agent \
     --project $PROJECT_ID
 ```
 
+**Note**: If you see an IAM policy warning about `allUsers`, your organization policy may restrict public access. The service is still deployed and functional, but requests may require authentication.
+
 **Important**: Replace `YOUR_CORPUS_ID` with your actual Vertex AI RAG corpus ID from Part 1, Step 4.
 
 ### Step 5: Verify Deployment
@@ -372,9 +384,11 @@ SERVICE_URL=$(gcloud run services describe nvidia-blog-agent \
     --format 'value(status.url)' \
     --project $PROJECT_ID)
 
-# Test health endpoint
+# Test health endpoint (may require authentication if org policy restricts public access)
 curl $SERVICE_URL/health
 ```
+
+**Note**: If you get `403 Forbidden`, your organization policy may require authentication. The service is deployed and working - you'll need to authenticate requests using `gcloud auth print-identity-token` or service account credentials.
 
 #### Test the /ask Endpoint
 
@@ -391,7 +405,7 @@ curl -X POST $SERVICE_URL/ask \
 #### Test the /ingest Endpoint
 
 ```bash
-# Test ingestion endpoint (if API key is set, include it)
+# Test ingestion endpoint (requires API key)
 curl -X POST $SERVICE_URL/ingest \
     -H "Content-Type: application/json" \
     -H "X-API-Key: your-secret-api-key-here" \

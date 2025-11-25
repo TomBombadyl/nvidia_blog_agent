@@ -18,8 +18,9 @@ COPY pyproject.toml ./
 COPY requirements.txt ./
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -e .
+# Suppress pip warning about running as root (safe in containers)
+RUN pip install --no-cache-dir --root-user-action=ignore --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --root-user-action=ignore -e .
 
 # Final stage: minimal runtime image
 FROM python:3.11-slim
@@ -42,7 +43,8 @@ COPY service/ ./service/
 COPY pyproject.toml ./
 
 # Reinstall in editable mode to ensure package structure is correct
-RUN pip install --no-cache-dir -e .
+# Suppress pip warning about running as root (safe in containers)
+RUN pip install --no-cache-dir --root-user-action=ignore -e .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1

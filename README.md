@@ -369,17 +369,35 @@ The evaluation harness can be used to compare different RAG configurations (e.g.
 The project includes a production-ready FastAPI service for Cloud Run deployment:
 
 - **POST /ask**: Answer questions using RAG retrieval + Gemini QA
-- **POST /ingest**: Trigger ingestion pipeline (optional API key protection)
+- **POST /ingest**: Trigger ingestion pipeline (protected with API key)
 - **GET /health**: Health check endpoint
 
-See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for deployment instructions and [LOCAL_TESTING.md](LOCAL_TESTING.md) for local testing.
+### Quick Deploy
+
+Deploy to Cloud Run using the automated script:
+
+```powershell
+$env:RAG_CORPUS_ID = "YOUR_CORPUS_ID"
+.\deploy_cloud_run.ps1
+```
+
+The script automatically handles:
+- ✅ Artifact Registry setup
+- ✅ IAM permissions configuration
+- ✅ Docker image build and push
+- ✅ Cloud Run deployment
+- ✅ API key generation
+
+See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for detailed deployment instructions and [LOCAL_TESTING.md](LOCAL_TESTING.md) for local testing.
 
 ## Documentation
 
-- **[CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md)**: Complete guide for Vertex AI RAG setup and Cloud Run deployment
-- **[ENGINEERING_STATUS_REPORT.md](ENGINEERING_STATUS_REPORT.md)**: Technical details about runtime configuration and architecture
+- **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)**: Complete project overview and current deployment status ⭐ **START HERE**
 - **[QUICK_START.md](QUICK_START.md)**: Fast path to get running locally and deployed
+- **[CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md)**: Complete guide for Vertex AI RAG setup and Cloud Run deployment
 - **[LOCAL_TESTING.md](LOCAL_TESTING.md)**: Guide for testing the FastAPI service locally
+- **[SETUP_CLOUD_SCHEDULER.md](SETUP_CLOUD_SCHEDULER.md)**: Set up automated daily ingestion with Cloud Scheduler
+- **[ENGINEERING_STATUS_REPORT.md](ENGINEERING_STATUS_REPORT.md)**: Technical details about runtime configuration and architecture
 
 ### Code Examples
 

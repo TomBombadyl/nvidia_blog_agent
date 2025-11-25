@@ -16,7 +16,8 @@ from typing import Dict, Any, List
 
 
 # Update this with your Cloud Run service URL
-SERVICE_URL = "https://nvidia-blog-agent-xxxxx-uc.a.run.app"
+# Update with your actual service URL from deployment
+SERVICE_URL = "https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app"
 
 
 def ask(question: str, top_k: int = 8, timeout: int = 60) -> Dict[str, Any]:

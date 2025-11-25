@@ -2,6 +2,15 @@
 
 This document provides technical details about the NVIDIA Tech Blog Agent system architecture, configuration, and runtime behavior.
 
+## Production Deployment
+
+**Service URL**: `https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app`  
+**Status**: ✅ Production deployed and operational  
+**RAG Corpus ID**: `6917529027641081856`  
+**Location**: `us-east5` (Columbus)
+
+For complete project overview, see [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md).
+
 ## Vertex RAG Runtime Config
 
 ### Backend Architecture

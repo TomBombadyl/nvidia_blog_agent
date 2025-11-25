@@ -2,6 +2,13 @@
 
 This guide helps you test the FastAPI service locally before deploying to Cloud Run.
 
+## Production Status
+
+**Current Production Service**: `https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app`  
+**Status**: ✅ Deployed and operational
+
+For complete project status, see [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md).
+
 ## Prerequisites
 
 1. **Install dependencies**:
@@ -204,4 +211,16 @@ Once local testing passes:
 2. ✅ /ask returns answers with sources
 3. ✅ /ingest processes new blog posts
 
-You're ready to deploy to Cloud Run! See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for deployment instructions.
+You're ready to deploy to Cloud Run! 
+
+### Quick Deploy
+
+```powershell
+# Set your RAG corpus ID
+$env:RAG_CORPUS_ID = "YOUR_CORPUS_ID"
+
+# Deploy using automated script
+.\deploy_cloud_run.ps1
+```
+
+The deployment script handles everything automatically. See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for detailed instructions.
