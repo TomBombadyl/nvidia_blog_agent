@@ -13,7 +13,7 @@ The service is designed for Cloud Run deployment with:
 - Application Default Credentials (no JSON keys in production)
 - Environment-based configuration
 - Proper error handling and logging
-- Security best practices (optional API key protection for /ingest)
+- Public-facing endpoints (no API keys required)
 - Monitoring and observability
 - Rate limiting
 - Response caching
@@ -63,6 +63,7 @@ from nvidia_blog_agent.monitoring import (
 )
 from nvidia_blog_agent.caching import get_response_cache
 from nvidia_blog_agent.session_manager import get_session_manager
+# Removed: API key authentication - all endpoints are now public
 
 # Configure logging
 logging.basicConfig(
@@ -126,6 +127,14 @@ class BatchAskResponse(BaseModel):
     """Response model for /ask/batch endpoint."""
 
     results: List[AskResponse] = Field(..., description="List of answers")
+
+
+class IngestRequest(BaseModel):
+    """Request model for /ingest endpoint."""
+
+    feed_url: Optional[str] = Field(
+        default=None, description="Optional custom feed URL (defaults to NVIDIA Tech Blog)"
+    )
 
 
 class IngestResponse(BaseModel):
@@ -195,7 +204,9 @@ async def lifespan(app: FastAPI):
         # Initialize MCP HTTP endpoint with service components
         from service.mcp_http import set_service_components
         set_service_components(_qa_agent, _ingest_client, _config)
-
+        
+        # For stateless HTTP, FastMCP handles session management automatically
+        # No need to explicitly run the session manager - it's handled by streamable_http_app()
         yield
 
     except Exception as e:
@@ -235,7 +246,10 @@ app.add_middleware(
 )
 
 # Mount MCP server at /mcp endpoint
-app.mount("/mcp", get_mcp_app())
+# FastAPI strips /mcp prefix before passing to mounted app
+# FastMCP's streamable_http_app() should handle requests at root when mounted
+# TEMPORARILY DISABLED - causing 502 errors on all endpoints
+# app.mount("/mcp", get_mcp_app())
 
 
 # Middleware for metrics and logging
@@ -635,23 +649,14 @@ async def export_data(format: str = "json", session_id: Optional[str] = None):
 
 
 @app.get("/admin/stats")
-async def admin_stats(x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
+async def admin_stats():
     """Admin dashboard endpoint with detailed statistics.
 
-    Requires ADMIN_API_KEY environment variable to be set.
-
-    Args:
-        x_api_key: API key from X-API-Key header
+    Public endpoint - no authentication required.
 
     Returns:
         Detailed admin statistics
     """
-    admin_key = os.environ.get("ADMIN_API_KEY")
-    if admin_key and x_api_key != admin_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing admin API key",
-        )
 
     metrics = get_metrics_collector()
     cache = get_response_cache()
@@ -673,17 +678,11 @@ async def admin_stats(x_api_key: Optional[str] = Header(None, alias="X-API-Key")
 
 
 @app.post("/admin/cache/clear")
-async def clear_cache(x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
-    """Clear response cache (admin only).
+async def clear_cache():
+    """Clear response cache.
 
-    Requires ADMIN_API_KEY environment variable to be set.
+    Public endpoint - no authentication required.
     """
-    admin_key = os.environ.get("ADMIN_API_KEY")
-    if admin_key and x_api_key != admin_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing admin API key",
-        )
 
     cache = get_response_cache()
     cache.clear()
@@ -692,39 +691,28 @@ async def clear_cache(x_api_key: Optional[str] = Header(None, alias="X-API-Key")
 
 
 @app.post("/ingest", response_model=IngestResponse)
-async def trigger_ingestion(
-    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    feed_url: Optional[str] = None,
-):
+async def trigger_ingestion(request: IngestRequest = IngestRequest()):
     """Trigger the ingestion pipeline to discover and ingest new blog posts.
 
     This endpoint:
     1. Loads persisted state (tracks previously seen blog post IDs)
-    2. Fetches the NVIDIA Tech Blog feed HTML
+    2. Fetches the feed HTML (from feed_url or default NVIDIA Tech Blog)
     3. Runs the full ingestion pipeline (discover → scrape → summarize → ingest)
     4. Updates and saves state
 
-    Optional API key protection: If INGEST_API_KEY env var is set, requires
-    X-API-Key header to match.
+    Public endpoint - no authentication required.
+    Cloud Scheduler uses OIDC authentication automatically.
 
     Args:
-        x_api_key: Optional API key from X-API-Key header
-        feed_url: Optional custom feed URL (defaults to NVIDIA Tech Blog)
+        request: IngestRequest containing optional feed_url
 
     Returns:
         IngestResponse with counts and status message
 
     Raises:
-        HTTPException: If API key is invalid, service not initialized, or ingestion fails
+        HTTPException: If service not initialized or ingestion fails
     """
-    # Check API key if configured
-    ingest_api_key = os.environ.get("INGEST_API_KEY")
-    if ingest_api_key:
-        if x_api_key != ingest_api_key:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing API key",
-            )
+    feed_url = request.feed_url
 
     if _ingest_client is None or _config is None:
         raise HTTPException(
