@@ -1,4 +1,14 @@
 # PowerShell script to deploy Cloud Run service
+# 
+# NOTE: This script is for MANUAL deployments only.
+# For production, use the automated CI/CD pipeline (GitHub Actions).
+# See docs/ci-cd.md for CI/CD deployment instructions.
+#
+# Use this script for:
+# - Local testing
+# - One-off deployments
+# - Environments without CI/CD
+#
 # Run this after building the container image
 
 $PROJECT_ID = "nvidia-blog-agent"

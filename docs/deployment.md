@@ -65,8 +65,36 @@ gsutil mb -p nvidia-blog-agent -l us-east5 gs://nvidia-blog-rag-docs
 
 ## Part 2: Cloud Run Deployment
 
-### Quick Deploy (Automated)
+### Recommended: Automated CI/CD Deployment
 
+**Primary Method**: The project uses GitHub Actions for automated deployment. See [CI/CD Pipeline Documentation](ci-cd.md) for details.
+
+**How it works**:
+1. Push to `master` branch (or trigger manually via GitHub Actions UI)
+2. GitHub Actions automatically:
+   - Runs tests
+   - Builds Docker image
+   - Pushes to Artifact Registry
+   - Deploys to Cloud Run
+   - Performs health check
+
+**Prerequisites**:
+- GitHub secrets configured (see [CI/CD Documentation](ci-cd.md))
+- Workload Identity Federation set up (see [Workload Identity Federation Guide](workload-identity-federation.md))
+
+**Manual Trigger**:
+```bash
+# Via GitHub CLI
+gh workflow run deploy.yml
+
+# Or via GitHub Actions UI: Actions → Deploy to Cloud Run → Run workflow
+```
+
+### Alternative: Manual Deployment (PowerShell Scripts)
+
+**Note**: These scripts are provided for manual deployments, local testing, or environments without CI/CD. For production, use the automated CI/CD pipeline.
+
+**Quick Deploy**:
 ```powershell
 $env:RAG_CORPUS_ID = "YOUR_CORPUS_ID"
 .\deploy_cloud_run.ps1
@@ -79,9 +107,7 @@ The script automatically:
 - ✅ Deploys to Cloud Run
 - ✅ Generates and sets `INGEST_API_KEY`
 
-### Manual Deployment
-
-See the deployment script (`deploy_cloud_run.ps1`) for step-by-step manual commands.
+**See the deployment script** (`deploy_cloud_run.ps1`) for step-by-step manual commands.
 
 ### Environment Variables
 
@@ -98,7 +124,11 @@ Required for Cloud Run:
 
 ## Part 3: Cloud Scheduler Setup
 
-### Automated Setup
+**Note**: Cloud Scheduler setup is typically a one-time operation. The scheduler job persists across deployments.
+
+### Automated Setup (PowerShell Script)
+
+**Note**: This script is for manual setup. Once configured, the scheduler persists and doesn't need to be re-run.
 
 ```powershell
 $env:INGEST_API_KEY='YOUR_API_KEY'  # From deployment output

@@ -1,6 +1,8 @@
 # PowerShell script to set up Cloud Scheduler for daily ingestion
 # 
-# NOTE: Cloud Scheduler is already configured and running in production.
+# NOTE: This script is for MANUAL setup only.
+# Cloud Scheduler is already configured and running in production.
+#
 # This script is useful for:
 # - Initial setup in new projects/environments
 # - Reconfiguring the schedule or endpoint
@@ -8,6 +10,8 @@
 #
 # Current production status: ENABLED (runs daily at 7:00 AM ET)
 # Job name: nvidia-blog-daily-ingest
+#
+# For automated deployments, see docs/ci-cd.md
 
 $PROJECT_ID = "nvidia-blog-agent"
 $REGION = "us-central1"
