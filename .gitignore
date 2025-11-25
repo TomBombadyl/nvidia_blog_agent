@@ -69,3 +69,7 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+# CI/CD
+.github/workflows/*.local.yml
+act/
+

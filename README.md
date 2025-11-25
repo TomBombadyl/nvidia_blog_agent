@@ -10,6 +10,7 @@ A production-ready system for discovering, processing, and querying NVIDIA techn
 - **Cloud Scheduler**: ✅ Enabled (daily at 7:00 AM ET)
 - **RAG Corpus**: ✅ Active with 100+ blog posts indexed
 - **Region**: `us-central1` (Cloud Run), `us-east5` (Vertex AI)
+- **CI/CD**: ✅ Automated testing and deployment via GitHub Actions
 
 ## Overview
 
@@ -400,6 +401,7 @@ The script automatically handles:
 - **[docs/deployment.md](docs/deployment.md)**: Complete deployment guide (Vertex AI RAG setup + Cloud Run)
 - **[docs/development.md](docs/development.md)**: Local development and testing guide
 - **[docs/architecture.md](docs/architecture.md)**: Technical architecture and configuration details
+- **[docs/ci-cd.md](docs/ci-cd.md)**: CI/CD pipeline documentation
 - **[docs/adding-historical-blogs.md](docs/adding-historical-blogs.md)**: Guide for processing historical blog posts
 - **[docs/mcp-setup.md](docs/mcp-setup.md)**: Setting up MCP server for Cursor IDE
 - **[docs/security.md](docs/security.md)**: Security audit and best practices
