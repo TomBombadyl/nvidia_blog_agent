@@ -3,7 +3,7 @@
 # This Dockerfile builds a production-ready container for Cloud Run deployment.
 # It uses a multi-stage build to keep the final image size small.
 
-FROM python:3.11-slim as builder
+FROM python:3.14-slim as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir --root-user-action=ignore --upgrade pip setuptool
     pip install --no-cache-dir --root-user-action=ignore -e .
 
 # Final stage: minimal runtime image
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
