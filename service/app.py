@@ -235,6 +235,8 @@ app.add_middleware(
 )
 
 # Mount MCP server at /mcp endpoint
+# FastAPI will route /mcp/* requests to this mount
+# Other routes are matched first, so /health, /ingest, etc. won't reach here
 app.mount("/mcp", get_mcp_app())
 
 
