@@ -55,19 +55,23 @@ Runs when a version tag is pushed (e.g., `v1.0.0`).
 
 Configure these in GitHub repository settings → Secrets and variables → Actions:
 
-1. **GCP_SA_KEY**: Service account JSON key for Google Cloud authentication
-   ```bash
-   # Get from service account:
-   gcloud iam service-accounts keys create key.json \
-     --iam-account=nvidia-blog-agent-sa@nvidia-blog-agent.iam.gserviceaccount.com
-   # Copy contents to GitHub secret
-   ```
+1. **WIF_PROVIDER**: Workload Identity Federation provider resource name
+   - Format: `projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID`
+   - Get from: GCP Console → IAM & Admin → Workload Identity Federation
+   - See [Workload Identity Fix Guide](workload-identity-fix.md) for setup
 
-2. **RAG_CORPUS_ID**: Vertex AI RAG corpus ID
+2. **WIF_SERVICE_ACCOUNT**: Service account email for Workload Identity
+   - Format: `nvidia-blog-agent-sa@nvidia-blog-agent.iam.gserviceaccount.com`
+   - Must have `roles/iam.workloadIdentityUser` role on the provider
+
+3. **GCP_PROJECT_ID**: (Optional) GCP project ID
+   - Defaults to `nvidia-blog-agent` if not set
+
+4. **RAG_CORPUS_ID**: Vertex AI RAG corpus ID
    - Get from Vertex AI RAG Engine console
    - Example: `6917529027641081856`
 
-3. **INGEST_API_KEY**: API key for `/ingest` endpoint
+5. **INGEST_API_KEY**: API key for `/ingest` endpoint
    - Generate: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
    - Must match the key set in Cloud Run environment variables
 
@@ -127,8 +131,14 @@ act -j deploy --secret-file .secrets
 
 ### Deployment Fails
 
-- Verify `GCP_SA_KEY` secret is correct
-- Check service account has required permissions
+**Workload Identity Authentication Errors:**
+- See [Workload Identity Fix Guide](workload-identity-fix.md) for detailed troubleshooting
+- Common issue: Attribute condition doesn't match repository/branch
+- Verify `WIF_PROVIDER` and `WIF_SERVICE_ACCOUNT` secrets are set correctly
+- Check Workload Identity Provider attribute mappings and conditions in GCP Console
+
+**Other Issues:**
+- Check service account has required permissions (Cloud Run Admin, etc.)
 - Verify `RAG_CORPUS_ID` and `INGEST_API_KEY` secrets are set
 - Check Cloud Run logs: `gcloud logging read ...`
 
