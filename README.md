@@ -2,6 +2,15 @@
 
 A production-ready system for discovering, processing, and querying NVIDIA technical blog content using Google Cloud Platform, Vertex AI, and RAG (Retrieval-Augmented Generation).
 
+## 🚀 Production Status
+
+**Status**: ✅ **FULLY DEPLOYED AND OPERATIONAL**
+
+- **Service URL**: `https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app`
+- **Cloud Scheduler**: ✅ Enabled (daily at 7:00 AM ET)
+- **RAG Corpus**: ✅ Active with 100+ blog posts indexed
+- **Region**: `us-central1` (Cloud Run), `us-east5` (Vertex AI)
+
 ## Overview
 
 This system provides an end-to-end pipeline that:
@@ -53,7 +62,7 @@ The system automatically detects which backend to use based on environment varia
 - **Retrieval**: Recommended `top_k=8-10` for initial retrieval, top 4-6 after reranking (configurable)
 - **Document Strategy**: One document per blog post
 
-See [ENGINEERING_STATUS_REPORT.md](ENGINEERING_STATUS_REPORT.md) for complete technical details.
+See [docs/architecture.md](docs/architecture.md) for complete technical details.
 
 ## Quick Start
 
@@ -61,7 +70,7 @@ See [ENGINEERING_STATUS_REPORT.md](ENGINEERING_STATUS_REPORT.md) for complete te
 
 - Python 3.10+
 - Google Cloud Project with billing enabled
-- Service account with appropriate permissions (see [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md))
+- Service account with appropriate permissions (see [docs/deployment.md](docs/deployment.md))
 
 ### Installation
 
@@ -86,7 +95,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 
 **Quick Start**: Create a `.env` file with your configuration values, or set environment variables directly in your shell.
 
-See [SETUP_WALKTHROUGH.md](SETUP_WALKTHROUGH.md) for a complete step-by-step setup guide.
+See [docs/development.md](docs/development.md) for local development setup.
 
 #### For Vertex AI RAG (Recommended)
 
@@ -112,9 +121,7 @@ export STATE_PATH="state.json"
 # export STATE_PATH="gs://nvidia-blog-agent-state/state.json"
 ```
 
-**Important**: When `USE_VERTEX_RAG=true`, the system automatically uses Vertex AI RAG Engine. Make sure you've completed the setup steps in [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) (Part 1: Vertex AI RAG Setup) before running ingestion or QA.
-
-See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for complete setup and deployment instructions.
+**Important**: When `USE_VERTEX_RAG=true`, the system automatically uses Vertex AI RAG Engine. Make sure you've completed the setup steps in [docs/deployment.md](docs/deployment.md) before running ingestion or QA.
 
 #### For HTTP-Based RAG
 
@@ -388,16 +395,14 @@ The script automatically handles:
 - ✅ Cloud Run deployment
 - ✅ API key generation
 
-See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for detailed deployment instructions and [LOCAL_TESTING.md](LOCAL_TESTING.md) for local testing.
-
 ## Documentation
 
-- **[PROJECT_SUMMARY.md](PROJECT_SUMMARY.md)**: Complete project overview and current deployment status ⭐ **START HERE**
-- **[QUICK_START.md](QUICK_START.md)**: Fast path to get running locally and deployed
-- **[CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md)**: Complete guide for Vertex AI RAG setup and Cloud Run deployment
-- **[LOCAL_TESTING.md](LOCAL_TESTING.md)**: Guide for testing the FastAPI service locally
-- **[SETUP_CLOUD_SCHEDULER.md](SETUP_CLOUD_SCHEDULER.md)**: Set up automated daily ingestion with Cloud Scheduler
-- **[ENGINEERING_STATUS_REPORT.md](ENGINEERING_STATUS_REPORT.md)**: Technical details about runtime configuration and architecture
+- **[docs/deployment.md](docs/deployment.md)**: Complete deployment guide (Vertex AI RAG setup + Cloud Run)
+- **[docs/development.md](docs/development.md)**: Local development and testing guide
+- **[docs/architecture.md](docs/architecture.md)**: Technical architecture and configuration details
+- **[docs/adding-historical-blogs.md](docs/adding-historical-blogs.md)**: Guide for processing historical blog posts
+- **[docs/mcp-setup.md](docs/mcp-setup.md)**: Setting up MCP server for Cursor IDE
+- **[docs/security.md](docs/security.md)**: Security audit and best practices
 
 ### Code Examples
 
@@ -454,7 +459,7 @@ print(answer)
 print("Sources:", [d.title for d in docs])
 ```
 
-See [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md) for complete setup instructions.
+See [docs/deployment.md](docs/deployment.md) for complete setup instructions.
 
 ## Project Structure
 
