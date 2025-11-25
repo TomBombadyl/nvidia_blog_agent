@@ -74,3 +74,4 @@ dmypy.json
 .github/workflows/*.local.yml
 act/
 
+mcp.json

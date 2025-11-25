@@ -27,19 +27,6 @@ if not SERVICE_URL:
 app = Server("nvidia-blog-agent-mcp")
 
 
-@app.initialize()
-async def initialize(
-    params: mcp_types.InitializationParams,
-) -> InitializationOptions:
-    return InitializationOptions(
-        server_name="nvidia-blog-agent-mcp",
-        server_version="0.1.0",
-        capabilities=mcp_types.ServerCapabilities(
-            tools=True,
-        ),
-    )
-
-
 @app.list_tools()
 async def list_tools() -> mcp_types.ListToolsResult:
     """
@@ -168,7 +155,14 @@ async def main() -> None:
         await app.run(
             read_stream,
             write_stream,
-            NotificationOptions(),
+            InitializationOptions(
+                server_name="nvidia-blog-agent-mcp",
+                server_version="0.1.0",
+                capabilities=app.get_capabilities(
+                    notification_options=NotificationOptions(),
+                    experimental_capabilities={},
+                ),
+            ),
         )
 
 

@@ -32,6 +32,7 @@ from io import StringIO
 from fastapi import FastAPI, HTTPException, status, Header, Request, Response
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.routing import Mount
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -190,6 +191,10 @@ async def lifespan(app: FastAPI):
         _health_checker.register_dependency("qa_agent", check_qa_agent)
 
         logger.info("Service initialized successfully")
+        
+        # Initialize MCP HTTP endpoint with service components
+        from service.mcp_http import set_service_components
+        set_service_components(_qa_agent, _ingest_client, _config)
 
         yield
 
@@ -215,14 +220,22 @@ app = FastAPI(
 app.state.limiter = _limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Add CORS middleware
+# Mount MCP HTTP/SSE endpoint
+from service.mcp_http import get_mcp_app
+
+# Add CORS middleware (before mounting MCP to ensure it applies)
+# Note: MCP requires exposing Mcp-Session-Id header for session management
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("CORS_ORIGINS", "*").split(","),
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Mcp-Session-Id"],  # Required for MCP session management
 )
+
+# Mount MCP server at /mcp endpoint
+app.mount("/mcp", get_mcp_app())
 
 
 # Middleware for metrics and logging
