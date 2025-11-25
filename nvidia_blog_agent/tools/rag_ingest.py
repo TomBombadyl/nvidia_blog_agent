@@ -14,6 +14,7 @@ The Protocol allows easy swapping between different ingestion backends:
 from typing import Protocol, Optional
 import httpx
 from nvidia_blog_agent.contracts.blog_models import BlogSummary
+from nvidia_blog_agent.retry import retry_with_backoff
 
 
 class RagIngestClient(Protocol):
@@ -122,13 +123,19 @@ class HttpRagIngestClient:
             self._client = None
     
     def _get_client(self) -> httpx.AsyncClient:
-        """Get or create the HTTP client.
+        """Get or create the HTTP client with connection pooling.
         
         Returns:
-            The httpx.AsyncClient instance.
+            The httpx.AsyncClient instance with connection pooling enabled.
         """
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.timeout)
+            # Use connection pooling with limits for better performance
+            limits = httpx.Limits(max_keepalive_connections=10, max_connections=20)
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout,
+                limits=limits,
+                http2=True  # Enable HTTP/2 for better performance
+            )
         return self._client
     
     async def ingest_summary(self, summary: BlogSummary) -> None:
@@ -171,9 +178,17 @@ class HttpRagIngestClient:
         # Construct the endpoint URL
         url = f"{self.base_url}/add_doc"
         
-        # Make the POST request
-        response = await client.post(url, json=payload, headers=headers)
+        # Make the POST request with retry logic
+        async def _make_request():
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            return response
         
-        # Raise exception on non-2xx status
-        response.raise_for_status()
+        await retry_with_backoff(
+            _make_request,
+            max_retries=3,
+            initial_delay=1.0,
+            max_delay=10.0,
+            multiplier=2.0
+        )
 

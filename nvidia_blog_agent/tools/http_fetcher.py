@@ -8,6 +8,7 @@ It also provides a helper function to fetch the NVIDIA Tech Blog feed.
 import httpx
 from typing import Protocol
 from nvidia_blog_agent.tools.scraper import HtmlFetcher
+from nvidia_blog_agent.retry import retry_with_backoff
 
 
 class HttpHtmlFetcher:
@@ -84,10 +85,27 @@ class HttpHtmlFetcher:
         if referer:
             request_headers["Referer"] = referer
         
-        async with httpx.AsyncClient(timeout=self.timeout, headers=request_headers) as client:
-            response = await client.get(url, follow_redirects=True)
-            response.raise_for_status()
-            return response.text
+        # Use connection pooling with limits
+        limits = httpx.Limits(max_keepalive_connections=10, max_connections=20)
+        async with httpx.AsyncClient(
+            timeout=self.timeout,
+            headers=request_headers,
+            limits=limits,
+            http2=True
+        ) as client:
+            # Use retry logic for transient failures
+            async def _make_request():
+                response = await client.get(url, follow_redirects=True)
+                response.raise_for_status()
+                return response.text
+            
+            return await retry_with_backoff(
+                _make_request,
+                max_retries=3,
+                initial_delay=1.0,
+                max_delay=10.0,
+                multiplier=2.0
+            )
 
 
 async def fetch_feed_html(feed_url: str | None = None) -> str:

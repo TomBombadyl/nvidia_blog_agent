@@ -1,386 +1,290 @@
 # NVIDIA Tech Blog Intelligence Agent
 
-A production-ready system for discovering, processing, and querying NVIDIA technical blog content using Google Cloud Platform, Vertex AI, and RAG (Retrieval-Augmented Generation).
+A production-ready RAG system that automatically discovers, processes, and answers questions about NVIDIA technical blog content using Google Cloud Platform, Vertex AI, and Gemini.
 
-## 🚀 Production Status
+> **Status**: ✅ Production deployed · Vertex AI RAG Engine · 190+ tests passing
 
-**Status**: ✅ **FULLY DEPLOYED AND OPERATIONAL**
+---
 
-- **Service URL**: `https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app`
-- **Cloud Scheduler**: ✅ Enabled (daily at 7:00 AM ET)
-- **RAG Corpus**: ✅ Active with 100+ blog posts indexed
-- **Region**: `us-central1` (Cloud Run), `us-east5` (Vertex AI)
-- **CI/CD**: ✅ Automated testing and deployment via GitHub Actions
+## 1. What this project does
 
-## Table of Contents
+This service:
 
-- [Overview](#overview)
-- [Quick Start](#quick-start)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [API Reference](#api-reference)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
+- Watches the **NVIDIA Tech Blog** (via RSS/Atom feed)
+- Extracts and normalizes blog content into structured objects
+- Summarizes each post with **Gemini 2.0 Flash**
+- Ingests summaries into a **RAG backend** (Vertex AI RAG Engine by default)
+- Exposes a **Cloud Run HTTP API** so you can:
+  - Ask questions about NVIDIA blogs (`POST /ask`)
+  - Process multiple questions at once (`POST /ask/batch`)
+  - Trigger ingestion of new posts (`POST /ingest`, API-key protected)
+  - Check health with dependency status (`GET /health`)
+  - View analytics and metrics (`GET /analytics`)
+  - Access query history and export data (`GET /history`, `GET /export`)
+  - Monitor system health via admin dashboard (`GET /admin/stats`)
 
-## Overview
+It is designed to be:
 
-The NVIDIA Tech Blog Intelligence Agent is an end-to-end system that automatically:
+- **Reliable** – stateful ingestion, duplicate detection, robust RSS parsing, retry logic with exponential backoff
+- **Portable** – works against HTTP-based or Vertex AI RAG backends
+- **Extensible** – clean protocol-based abstractions for tools and agents
+- **Observable** – comprehensive metrics, structured logging, health checks, Cloud Monitoring integration
+- **Performant** – response caching, connection pooling, async optimizations, batch processing
 
-1. **Discovers** new NVIDIA technical blog posts from RSS/Atom feeds
-2. **Scrapes** and parses blog content into structured data
-3. **Summarizes** posts using Google's Gemini 2.0 Flash model
-4. **Ingests** summaries into a RAG backend (Vertex AI RAG Engine or HTTP-based)
-5. **Answers questions** about NVIDIA blogs using RAG retrieval + Gemini 2.0 Flash
+---
 
-### Key Features
+## 2. High-level architecture
 
-- ✅ **RSS/Atom Feed Support**: Automatic parsing with full content extraction
-- ✅ **Dual RAG Backend**: HTTP-based or Vertex AI RAG Engine (managed)
-- ✅ **Automatic Backend Detection**: Switch backends via environment variables
-- ✅ **Production Ready**: Deployed to Cloud Run with automated CI/CD
-- ✅ **Comprehensive Testing**: 193+ tests covering all components
-- ✅ **Modular Design**: Protocol-based abstractions for easy testing and extension
-- ✅ **State Management**: Session state with history tracking and compaction
-- ✅ **Efficient Processing**: Uses RSS feed content directly to avoid rate limiting
+**Core components**
 
-## Quick Start
+- `contracts/` – Pydantic models (e.g. `BlogPost`, `RawBlogContent`, `BlogSummary`, `RetrievedDoc`)
+- `tools/` – Feed discovery, content extraction, summarization, and RAG clients
+- `agents/` – Orchestration, summarization agent, QA agent, workflow logic
+- `context/` – State management, prefixes, history, compaction
+- `eval/` – Evaluation harness for QA quality and regression testing
+- `monitoring.py` – Metrics collection, structured logging, health checks
+- `caching.py` – Response caching with TTL
+- `session_manager.py` – Multi-turn conversation support
+- `retry.py` – Retry logic with exponential backoff
 
-### Prerequisites
+**RAG backends**
 
-- Python 3.10 or higher
-- Google Cloud Project with billing enabled
-- Service account with appropriate permissions (see [Deployment Guide](docs/deployment.md))
+- **Vertex AI RAG Engine (recommended)**
+  - Vertex AI Search + GCS + `text-embedding-005`
+  - `GcsRagIngestClient` writes docs → GCS
+  - `VertexRagRetrieveClient` queries RAG Engine
 
-### Installation
+- **HTTP-based RAG (optional)**
+  - Generic HTTP RAG (e.g. NVIDIA CA-RAG, custom service)
+  - `HttpRagIngestClient` and `HttpRagRetrieveClient`
+
+Backend selection is automatic based on environment variables (`USE_VERTEX_RAG`).
+
+**Key technical defaults**
+
+- **Embedding model**: `text-embedding-005`
+- **Chunking**: 1024 tokens with 256-token overlap (Vertex AI Search)
+- **Hybrid search**: Enabled (vector + keyword/BM25)
+- **Reranking**: Available via Vertex AI ranking API
+- **Summarization & QA**: Gemini 2.0 Flash
+- **Document strategy**: One document per blog post
+
+See `docs/architecture.md` for full details.
+
+---
+
+## 3. Getting started
+
+### 3.1 Prerequisites
+
+- Python **3.10+**
+- A **Google Cloud project** with billing enabled
+- A **service account** with:
+  - Vertex AI + Vertex AI Search permissions
+  - Cloud Storage access
+- (Recommended) Vertex AI RAG corpus already set up  
+  See `docs/deployment.md` for the one-time RAG setup.
+
+### 3.2 Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/TomBombadil/nvidia_blog_agent.git
+git clone https://github.com/YOUR_USERNAME/nvidia_blog_agent.git
 cd nvidia_blog_agent
 
-# Install the package in editable mode
+# Install package (editable mode for development)
 pip install -e .
 
-# Or install with optional dependencies
-pip install -e ".[dev,adk]"
-```
-
-### Basic Usage
-
-1. **Set up environment variables** (see [Configuration](#configuration))
-
-2. **Run ingestion** to process blog posts:
-   ```bash
-   python scripts/run_ingest.py
-   ```
-
-3. **Query the system**:
-   ```bash
-   python scripts/run_qa.py "What did NVIDIA say about RAG on GPUs?"
-   ```
-
-4. **Deploy to Cloud Run**:
-   ```powershell
-   .\deploy_cloud_run.ps1
-   ```
-
-For detailed setup instructions, see the [Development Guide](docs/development.md).
-
-## Architecture
-
-### System Components
-
-```
-┌─────────────────┐
-│  RSS/Atom Feed  │
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐     ┌──────────────┐     ┌─────────────┐
-│   Discovery     │────▶│   Scraping   │────▶│ Summarization│
-└─────────────────┘     └──────────────┘     └──────┬──────┘
-                                                      │
-                                                      ▼
-                                            ┌─────────────────┐
-                                            │  RAG Ingestion  │
-                                            └────────┬────────┘
-                                                     │
-                                                     ▼
-                                            ┌─────────────────┐
-                                            │  Vertex AI RAG  │
-                                            │     Engine      │
-                                            └────────┬────────┘
-                                                     │
-                                                     ▼
-                                            ┌─────────────────┐
-                                            │   QA Agent      │
-                                            │  (Gemini 2.0)    │
-                                            └─────────────────┘
-```
-
-### Core Modules
-
-- **`contracts/`**: Pydantic data models (BlogPost, RawBlogContent, BlogSummary, RetrievedDoc)
-- **`tools/`**: Discovery, scraping, summarization, and RAG operations
-- **`agents/`**: Workflow orchestration, summarization, and QA agents
-- **`context/`**: Session management, state prefixes, and history compaction
-- **`eval/`**: Evaluation harness for testing QA performance
-
-### RAG Backends
-
-The system supports two RAG backend modes:
-
-#### 1. Vertex AI RAG Engine (Recommended)
-
-- **Managed Service**: Google handles embeddings, chunking, and retrieval
-- **Vertex AI Search**: Backend search engine with hybrid search (vector + keyword)
-- **Configuration**: Set `USE_VERTEX_RAG=true` and provide corpus ID
-- **Benefits**: No infrastructure to manage, automatic scaling, production-ready
-
-#### 2. HTTP-Based RAG
-
-- **Generic HTTP Service**: Works with any HTTP-based RAG service
-- **Configuration**: Set `RAG_BASE_URL` and `RAG_UUID`
-- **Use Case**: Custom RAG implementations or NVIDIA CA-RAG
-
-The system automatically detects which backend to use based on environment variables.
-
-### Technical Specifications
-
-- **Embedding Model**: `text-embedding-005` (Vertex AI RAG Engine)
-- **Chunk Size**: 1024 tokens (configurable in Vertex AI Search)
-- **Chunk Overlap**: 256 tokens (configurable in Vertex AI Search)
-- **Hybrid Search**: Enabled by default (vector similarity + keyword/BM25)
-- **Reranking**: Available via Vertex AI ranking API
-- **QA Model**: Gemini 2.0 Flash (`gemini-2.0-flash-001`)
-- **Summarization Model**: Gemini 2.0 Flash
-- **Retrieval**: Recommended `top_k=8-10` for initial retrieval, top 4-6 after reranking
-
-See [docs/architecture.md](docs/architecture.md) for complete technical details.
-
-## Installation
-
-### From Source
-
-```bash
-git clone https://github.com/TomBombadil/nvidia_blog_agent.git
-cd nvidia_blog_agent
-pip install -e .
-```
-
-### With Optional Dependencies
-
-```bash
-# Development dependencies (pytest, etc.)
-pip install -e ".[dev]"
-
-# ADK support (for Google GenAI ADK)
+# Optional: with ADK support
 pip install -e ".[adk]"
 
-# Both
-pip install -e ".[dev,adk]"
-```
-
-### Google Cloud Authentication
-
-```bash
-# Set service account credentials
+# Configure Google Cloud credentials (for local dev)
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
-
-# Or use Application Default Credentials
-gcloud auth application-default login
 ```
 
-## Configuration
+---
 
-Configuration is managed via environment variables. Create a `.env` file in the project root or set variables in your shell.
+## 4. Configuration
 
-### Required Variables
+You can use a `.env` file (recommended) or export environment variables directly.
+
+### 4.1 Vertex AI RAG mode (recommended)
 
 ```bash
-# Google Cloud
+# Gemini config
+export GEMINI_MODEL_NAME="gemini-2.0-flash-001"
+export GEMINI_LOCATION="us-east5"
+
+# Vertex AI RAG config
+export USE_VERTEX_RAG="true"
+export RAG_CORPUS_ID="YOUR_CORPUS_ID"      # from Vertex AI RAG Engine
+export VERTEX_LOCATION="us-east5"
+export RAG_DOCS_BUCKET="gs://nvidia-blog-rag-docs"
+
+# Project + credentials
 export GOOGLE_CLOUD_PROJECT="nvidia-blog-agent"
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 
-# Gemini Configuration
+# State (local or GCS)
+export STATE_PATH="state.json"
+# Recommended for production:
+# export STATE_PATH="gs://nvidia-blog-agent-state/state.json"
+```
+
+When `USE_VERTEX_RAG=true`, the system automatically uses Vertex AI RAG Engine.
+
+For full setup and deployment, see `docs/deployment.md`.
+
+### 4.2 HTTP-based RAG mode (optional)
+
+```bash
 export GEMINI_MODEL_NAME="gemini-2.0-flash-001"
 export GEMINI_LOCATION="us-east5"
-```
 
-### Vertex AI RAG Configuration (Recommended)
-
-```bash
-export USE_VERTEX_RAG="true"
-export RAG_CORPUS_ID="YOUR_CORPUS_ID"  # From Vertex AI RAG Engine
-export VERTEX_LOCATION="us-east5"
-export RAG_DOCS_BUCKET="gs://nvidia-blog-rag-docs"
-```
-
-### HTTP RAG Configuration (Alternative)
-
-```bash
 export RAG_BASE_URL="https://your-rag-service.run.app"
 export RAG_UUID="corpus-id"
-export RAG_API_KEY="optional-api-key"  # If required
+export RAG_API_KEY="optional-api-key"
 ```
 
-### Optional Configuration
+### 4.3 Optional configuration (v0.2.0 features)
 
 ```bash
-# State Persistence
-export STATE_PATH="state.json"  # Local file (development)
-# export STATE_PATH="gs://nvidia-blog-agent-state/state.json"  # GCS (production)
+# API rate limiting
+export RATE_LIMIT="10/minute"              # Default: 10/minute
+export BATCH_RATE_LIMIT="5/minute"        # Default: 5/minute
 
-# Custom Feed URL (defaults to NVIDIA blog feed)
-export FEED_URL="https://developer.nvidia.com/blog/feed/"
+# Response caching
+export CACHE_MAX_SIZE="1000"               # Default: 1000
+export CACHE_TTL_SECONDS="3600"           # Default: 3600 (1 hour)
+
+# Session management
+export SESSION_TTL_HOURS="24"              # Default: 24 hours
+
+# Monitoring & logging
+export STRUCTURED_LOGGING="false"          # Enable JSON logging
+export CORS_ORIGINS="*"                    # CORS allowed origins
+
+# Admin endpoints
+export ADMIN_API_KEY="your-admin-key"      # For /admin/* endpoints
+export INGEST_API_KEY="your-ingest-key"   # For /ingest endpoint
 ```
 
-### Complete Configuration Example
+---
 
-Create a `.env` file:
+## 5. Local usage
+
+### 5.1 Run the test suite
 
 ```bash
-# .env
-GOOGLE_CLOUD_PROJECT=nvidia-blog-agent
-GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
-GEMINI_MODEL_NAME=gemini-2.0-flash-001
-GEMINI_LOCATION=us-east5
-USE_VERTEX_RAG=true
-RAG_CORPUS_ID=6917529027641081856
-VERTEX_LOCATION=us-east5
-RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs
-STATE_PATH=state.json
+pytest              # all tests
+pytest -v           # verbose
+pytest tests/unit/
+pytest tests/workflows/
+pytest tests/e2e/
 ```
 
-**Note**: The `.env` file is automatically ignored by git. Never commit secrets or credentials.
+All tests should pass before changes are merged.
 
-## Usage
-
-### Running Ingestion
-
-Process new blog posts from the RSS feed:
+### 5.2 Run ingestion (fetch & index blogs)
 
 ```bash
-# Basic usage (uses default NVIDIA blog feed)
+# Default: uses NVIDIA Tech Blog RSS feed and local state.json
 python scripts/run_ingest.py
 
-# Custom state file
-python scripts/run_ingest.py --state-path state.json
-
-# Use GCS for state persistence (production)
+# Use GCS for state persistence
 python scripts/run_ingest.py --state-path gs://nvidia-blog-agent-state/state.json
 
-# Custom feed URL
-python scripts/run_ingest.py --feed-url https://custom-blog.com/feed/
-
-# Verbose logging
-python scripts/run_ingest.py --verbose
+# Custom feed URL (RSS/Atom feed or HTML page)
+python scripts/run_ingest.py --feed-url https://custom-blog.com/feed/ --verbose
 ```
 
-**What it does:**
-1. Fetches the RSS/Atom feed (default: NVIDIA Tech Blog)
-2. Discovers new posts not yet processed
-3. Extracts content from feed entries (or scrapes if needed)
-4. Summarizes posts using Gemini 2.0 Flash
-5. Ingests summaries into RAG backend
-6. Updates state with processed post IDs
+The ingestion pipeline will:
 
-### Running QA Queries
+1. Load config and current state
+2. Fetch the NVIDIA Tech Blog feed (`https://developer.nvidia.com/blog/feed/` by default)
+3. Discover new posts (compares against state)
+4. Extract full content from RSS/Atom feed when available (no 403s)
+5. Summarize with Gemini 2.0 Flash
+6. Ingest documents into the configured RAG backend
+7. Update state to avoid reprocessing the same posts
 
-Query the RAG system:
+### 5.3 Run QA queries from the CLI
 
 ```bash
-# Query via command line
+# Simple question
 python scripts/run_qa.py "What did NVIDIA say about RAG on GPUs?"
 
-# Query via stdin
-echo "What is GPU acceleration?" | python scripts/run_qa.py
-
-# Specify number of documents to retrieve
+# Specify number of retrieved docs
 python scripts/run_qa.py "Tell me about CUDA" --top-k 10
 
-# Verbose logging
-python scripts/run_qa.py "Question here" --verbose
+# Pipe from stdin
+echo "What is GPU acceleration?" | python scripts/run_qa.py --top-k 8 --verbose
 ```
 
-**What it does:**
-1. Retrieves relevant documents from RAG backend
-2. Generates answer using Gemini 2.0 Flash
-3. Displays answer with source document titles/URLs
+The script will:
 
-### Programmatic Usage
+1. Create a real RAG client (Vertex or HTTP, depending on config)
+2. Retrieve the top K documents (recommended: 8–10, then 4–6 to Gemini)
+3. Generate an answer with Gemini 2.0 Flash
+4. Print the answer + source titles/URLs
 
-```python
-from nvidia_blog_agent.config import load_config_from_env
-from nvidia_blog_agent.rag_clients import create_rag_clients
-from nvidia_blog_agent.agents.workflow import run_ingestion_pipeline
-from nvidia_blog_agent.agents.qa_agent import QAAgent
-from nvidia_blog_agent.agents.gemini_qa_model import GeminiQaModel
-from nvidia_blog_agent.tools.http_fetcher import fetch_feed_html
+---
 
-# Load configuration
-config = load_config_from_env()
+## 6. Cloud Run HTTP API
 
-# Create RAG clients (automatically selects backend)
-ingest_client, retrieve_client = create_rag_clients(config)
+The project includes a FastAPI service for Cloud Run with comprehensive features:
 
-# Run ingestion
-feed_html = await fetch_feed_html()
-result = await run_ingestion_pipeline(
-    feed_html=feed_html,
-    existing_ids=set(),
-    summarizer=GeminiSummarizer(config.gemini),
-    rag_client=ingest_client,
-)
+### 6.1 Core Endpoints
 
-# Query the system
-qa_model = GeminiQaModel(config.gemini)
-qa_agent = QAAgent(rag_client=retrieve_client, model=qa_model)
-answer, docs = await qa_agent.answer("What did NVIDIA say about RAG?", k=8)
-print(answer)
-```
-
-See [docs/development.md](docs/development.md) for more examples.
-
-## API Reference
-
-### Cloud Run HTTP API
-
-The system includes a production-ready FastAPI service deployed to Cloud Run:
-
-#### Endpoints
-
-- **`GET /health`**: Health check endpoint
+- **`GET /health`**: Health check with dependency status
 - **`GET /`**: Service information
-- **`POST /ask`**: Answer questions using RAG
-  ```json
-  {
-    "question": "What did NVIDIA say about RAG?",
-    "top_k": 8
-  }
-  ```
-- **`POST /ingest`**: Trigger ingestion pipeline (protected with API key)
-  ```json
-  {
-    "feed_url": "https://developer.nvidia.com/blog/feed/",
-    "api_key": "YOUR_INGEST_API_KEY"
-  }
-  ```
+- **`POST /ask`**: Answer questions using RAG (with caching and session support)
+- **`POST /ingest`**: Trigger ingestion (protected by `X-API-Key`)
 
-#### Example Usage
+### 6.2 New Features (v0.2.0)
+
+- **`POST /ask/batch`**: Batch query endpoint for processing multiple questions
+- **`GET /analytics`**: Usage analytics and metrics
+- **`GET /history`**: Query history (optionally filtered by session_id)
+- **`GET /export`**: Export query history in CSV or JSON format
+- **`GET /admin/stats`**: Admin dashboard with detailed statistics
+- **`POST /admin/cache/clear`**: Clear response cache (admin only)
+
+### 6.3 OpenAPI Documentation
+
+- **`GET /docs`**: Interactive Swagger UI documentation
+- **`GET /redoc`**: ReDoc documentation
+- **`GET /openapi.json`**: OpenAPI schema
+
+### 6.4 Example Usage
 
 ```bash
-# Health check
+# Health check with dependency status
 curl https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/health
 
-# Ask a question
+# Ask a question (with session support for multi-turn conversations)
 curl -X POST https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/ask \
   -H "Content-Type: application/json" \
-  -d '{"question": "What is CUDA?", "top_k": 8}'
+  -d '{"question": "What is CUDA?", "top_k": 8, "session_id": "my-session-123"}'
+
+# Batch query (process multiple questions at once)
+curl -X POST https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/ask/batch \
+  -H "Content-Type: application/json" \
+  -d '{"questions": ["What is CUDA?", "What is TensorRT?"], "top_k": 8}'
+
+# Get usage analytics
+curl https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/analytics
+
+# Get query history for a session
+curl "https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/history?session_id=my-session-123"
+
+# Export query history as CSV
+curl "https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/export?format=csv&session_id=my-session-123" \
+  -o history.csv
+
+# Admin statistics (requires admin API key)
+curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
+  https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/admin/stats
 
 # Trigger ingestion (requires API key)
 curl -X POST https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/ingest \
@@ -389,204 +293,130 @@ curl -X POST https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/ingest \
   -d '{"feed_url": "https://developer.nvidia.com/blog/feed/"}'
 ```
 
-See [docs/deployment.md](docs/deployment.md) for deployment instructions.
+### 6.5 New Features in v0.2.0
 
-## Testing
+**Monitoring & Observability:**
+- Request metrics (counts, latency, error rates, percentiles)
+- Structured JSON logging (enable with `STRUCTURED_LOGGING=true`)
+- Health checks with dependency status
+- Cloud Monitoring integration (optional)
 
-### Running Tests
+**Performance Optimizations:**
+- Response caching for common queries (configurable TTL)
+- Connection pooling with HTTP/2 support
+- Retry logic with exponential backoff for transient failures
+- Async optimizations for batch processing
 
-```bash
-# Run all tests
-pytest
+**API Enhancements:**
+- OpenAPI/Swagger documentation at `/docs`
+- Rate limiting (configurable via `RATE_LIMIT` env var)
+- Batch query endpoint for processing multiple questions
+- Usage analytics endpoint
 
-# Verbose output
-pytest -v
+**Additional Features:**
+- Multi-turn conversation support via session IDs
+- Query history tracking and retrieval
+- Export functionality (CSV/JSON formats)
+- Admin dashboard endpoints for monitoring and management
 
-# Specific test categories
-pytest tests/unit/          # Unit tests
-pytest tests/workflows/      # Workflow tests
-pytest tests/e2e/           # End-to-end tests
-
-# With coverage
-pytest --cov=nvidia_blog_agent --cov-report=html
-```
-
-### Test Coverage
-
-- **193+ tests** covering all components
-- **Unit tests**: Contracts, tools, agents
-- **Integration tests**: Context management, state persistence
-- **E2E tests**: Full pipeline, evaluation harness
-- **Workflow tests**: Daily pipeline, parallel scraping
-
-All tests should pass before submitting pull requests.
-
-### Evaluation Harness
-
-Test QA performance with different configurations:
-
-```bash
-# Run evaluation with default test cases
-python scripts/run_eval_vertex.py
-
-# Save results to file
-python scripts/run_eval_vertex.py --output eval_results.json
-
-# Custom test cases
-python scripts/run_eval_vertex.py --cases-file my_cases.json
-```
-
-See [docs/development.md](docs/development.md) for evaluation details.
-
-## Deployment
-
-### Quick Deploy to Cloud Run
-
-Deploy using the automated PowerShell script:
+You can deploy using the provided script:
 
 ```powershell
-# Set required environment variables
+# PowerShell
 $env:RAG_CORPUS_ID = "YOUR_CORPUS_ID"
-$env:INGEST_API_KEY = "YOUR_API_KEY"  # Optional, auto-generated if not provided
-
-# Deploy
 .\deploy_cloud_run.ps1
 ```
 
-The script automatically:
-- ✅ Creates Artifact Registry repository
-- ✅ Configures IAM permissions
-- ✅ Builds and pushes Docker image
-- ✅ Deploys to Cloud Run
-- ✅ Generates API key for `/ingest` endpoint
+The script handles:
+- Building and pushing the container image
+- Setting environment variables and secrets
+- Deploying Cloud Run
+- Wiring IAM and Artifact Registry
 
-### CI/CD Pipeline
+Detailed deployment and Cloud Scheduler setup (daily ingestion) are documented in:
+- `docs/deployment.md`
+- `docs/development.md`
+- `docs/security.md`
+- `docs/adding-historical-blogs.md`
 
-The project includes automated CI/CD via GitHub Actions:
+---
 
-- **CI Workflow**: Runs on every push/PR
-  - Tests (Python 3.10, 3.11, 3.12)
-  - Linting (ruff)
-  - Type checking (mypy)
-  - Docker build verification
+## 7. Evaluation & quality
 
-- **Deploy Workflow**: Runs on pushes to `master`/`main`
-  - Authenticates using Workload Identity Federation
-  - Builds and pushes Docker image
-  - Deploys to Cloud Run
+An evaluation harness is included to test QA performance:
 
-See [docs/ci-cd.md](docs/ci-cd.md) for setup instructions.
+- Compare RAG configurations (chunking, retrieval parameters, backends)
+- Run regression tests on curated questions
+- Generate JSON summaries of pass/fail stats
 
-### Cloud Scheduler
+CLI entrypoint:
 
-Set up daily automatic ingestion:
-
-```powershell
-# After deployment, set up scheduler
-$env:SERVICE_URL = "https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app"
-$env:INGEST_API_KEY = "YOUR_API_KEY"
-.\setup_scheduler.ps1
+```bash
+python scripts/run_eval_vertex.py --verbose
+python scripts/run_eval_vertex.py --output eval_results.json
 ```
 
-This creates a Cloud Scheduler job that triggers ingestion daily at 7:00 AM ET.
+Programmatic usage is documented in `docs/architecture.md`.
 
-For complete deployment instructions, see [docs/deployment.md](docs/deployment.md).
+---
 
-## Documentation
+## 8. MCP integration (optional)
 
-Comprehensive documentation is available in the `docs/` directory:
+This repo includes an MCP server that wraps the Cloud Run API:
 
-- **[deployment.md](docs/deployment.md)**: Complete deployment guide (Vertex AI RAG setup + Cloud Run)
-- **[development.md](docs/development.md)**: Local development and testing guide
-- **[architecture.md](docs/architecture.md)**: Technical architecture and configuration details
-- **[ci-cd.md](docs/ci-cd.md)**: CI/CD pipeline setup and configuration
-- **[adding-historical-blogs.md](docs/adding-historical-blogs.md)**: Guide for processing historical blog posts
-- **[mcp-setup.md](docs/mcp-setup.md)**: Setting up MCP server for Cursor IDE
-- **[security.md](docs/security.md)**: Security audit and best practices
+- `nvidia_blog_mcp_server.py` – stdio MCP server
 
-## Project Structure
+Tools:
+- `ask_nvidia_blog` – read-only QA
+- `trigger_ingest` – ingestion with API key
+
+See `docs/mcp-setup.md` for configuration and host integration (Cursor, Claude Desktop, etc.).
+
+---
+
+## 9. Project structure (short version)
 
 ```
 nvidia_blog_agent/
-├── nvidia_blog_agent/          # Python package
-│   ├── contracts/              # Data models (Pydantic)
-│   ├── tools/                  # Discovery, scraping, RAG clients
-│   ├── agents/                 # Workflow, summarization, QA agents
-│   ├── context/                # Session state management
-│   └── eval/                   # Evaluation harness
-├── service/                    # Cloud Run FastAPI service
-├── scripts/                    # Runtime entrypoints
-├── tests/                      # Comprehensive test suite
-├── docs/                       # Documentation
-├── Dockerfile                  # Container image
-├── pyproject.toml             # Package configuration
-└── requirements.txt           # Dependencies
+├── nvidia_blog_agent/        # Core Python package
+│   ├── contracts/            # Data models
+│   ├── tools/                # RSS, scraping, RAG clients
+│   ├── agents/               # Summarizer, QA, workflows
+│   ├── context/              # State management
+│   ├── eval/                 # Evaluation harness
+│   ├── monitoring.py         # Metrics & observability
+│   ├── caching.py            # Response caching
+│   ├── session_manager.py    # Conversation sessions
+│   └── retry.py              # Retry logic
+├── service/                  # FastAPI Cloud Run service
+├── scripts/                  # CLI entrypoints (ingest, QA, eval, tests)
+├── tests/                    # 190+ tests
+├── docs/                     # Deployment, architecture, security, MCP, etc.
+├── Dockerfile
+└── pyproject.toml
 ```
 
-## Environment Variables Reference
+---
 
-### Required
+## 10. Contributing
 
-- `GOOGLE_CLOUD_PROJECT`: GCP project ID
-- `GOOGLE_APPLICATION_CREDENTIALS`: Path to service account JSON
-- `GEMINI_MODEL_NAME`: Gemini model name (e.g., "gemini-2.0-flash-001")
+Contributions are welcome.
 
-### Vertex AI RAG Mode
+- Please open an issue describing the change you'd like to make
+- Ensure all tests pass (`pytest`)
+- Follow existing type hints and code style
 
-- `USE_VERTEX_RAG`: Set to "true"
-- `RAG_CORPUS_ID`: Vertex AI RAG corpus ID
-- `VERTEX_LOCATION`: Region (e.g., "us-east5")
-- `RAG_DOCS_BUCKET`: GCS bucket for documents (e.g., "gs://nvidia-blog-rag-docs")
+---
 
-### HTTP RAG Mode
+## 11. License
 
-- `RAG_BASE_URL`: RAG service base URL
-- `RAG_UUID`: Corpus identifier
-- `RAG_API_KEY`: API key (if required)
+[Add your license information here (e.g. Apache 2.0, MIT).]
 
-### Optional
+---
 
-- `GEMINI_LOCATION`: Gemini model location (default: "us-east5")
-- `STATE_PATH`: State file path (local JSON or `gs://bucket/blob.json`)
-- `FEED_URL`: RSS/Atom feed URL (default: NVIDIA blog feed)
+## 12. Contact
 
-## Contributing
-
-Contributions are welcome! Please follow these guidelines:
-
-1. **Fork the repository** and create a feature branch
-2. **Write tests** for new functionality
-3. **Ensure all tests pass**: `pytest`
-4. **Follow code style**: The project uses `ruff` for linting
-5. **Update documentation** as needed
-6. **Submit a pull request** with a clear description
-
-### Development Setup
-
-```bash
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Run linter
-ruff check .
-
-# Format code
-ruff format .
-
-# Run type checker
-mypy .
-
-# Run tests
-pytest -v
-```
-
-## License
-
-[Add your license here]
-
-## Contact
-
-[Add your contact information here]
+[Add your preferred contact information or GitHub profile here.]
 
 ---
 
