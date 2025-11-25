@@ -48,6 +48,7 @@ Thumbs.db
 *.key
 *.pem
 credentials.json
+key.json
 
 # State files (may contain sensitive data)
 state.json
