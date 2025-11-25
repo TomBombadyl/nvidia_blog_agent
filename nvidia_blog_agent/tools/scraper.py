@@ -197,7 +197,8 @@ def parse_blog_html(blog: BlogPost, html: str) -> RawBlogContent:
             title=blog.title,
             html=html,
             text=placeholder_text,
-            sections=[]
+            sections=[],
+            categories=blog.tags  # Pass categories from BlogPost
         )
     
     try:
@@ -212,7 +213,8 @@ def parse_blog_html(blog: BlogPost, html: str) -> RawBlogContent:
             title=blog.title,
             html=html,
             text=placeholder_text,
-            sections=[]
+            sections=[],
+            categories=blog.tags  # Pass categories from BlogPost
         )
     
     # Find the article root
@@ -224,6 +226,20 @@ def parse_blog_html(blog: BlogPost, html: str) -> RawBlogContent:
     
     # Extract clean text
     text = _clean_text(root)
+    
+    # If text is empty after cleaning, use placeholder
+    # (This can happen if the page has no extractable text content)
+    if not text or not text.strip():
+        placeholder_text = blog.title if blog.title else "No content available"
+        return RawBlogContent(
+            blog_id=blog.id,
+            url=blog.url,
+            title=blog.title,
+            html=html,
+            text=placeholder_text,
+            sections=[],
+            categories=blog.tags  # Pass categories from BlogPost
+        )
     
     # Extract sections
     sections = _extract_sections(root)
@@ -239,7 +255,8 @@ def parse_blog_html(blog: BlogPost, html: str) -> RawBlogContent:
         title=blog.title,
         html=html,
         text=text,
-        sections=sections
+        sections=sections,
+        categories=blog.tags  # Pass categories from BlogPost
     )
 
 
@@ -250,12 +267,13 @@ async def fetch_and_parse_blog(
     """Fetch HTML for a blog post and parse it into RawBlogContent.
     
     This function orchestrates the fetching and parsing process:
-    1. Calls the HtmlFetcher to fetch HTML
-    2. Parses the HTML using parse_blog_html()
+    1. If blog.content is available (from RSS feed), uses it directly
+    2. Otherwise, calls the HtmlFetcher to fetch HTML
+    3. Parses the HTML using parse_blog_html()
     
     Args:
         blog: BlogPost object containing the URL and metadata.
-        fetcher: HtmlFetcher implementation to use for fetching HTML.
+        fetcher: HtmlFetcher implementation to use for fetching HTML (only if blog.content is None).
     
     Returns:
         RawBlogContent object with fetched and parsed content.
@@ -273,8 +291,13 @@ async def fetch_and_parse_blog(
         >>> content.blog_id
         'test-id'
     """
-    # Fetch HTML using the fetcher
-    html = await fetcher.fetch_html(str(blog.url))
+    # If content is already available from RSS feed, use it directly
+    # This avoids 403 errors and is faster than fetching individual posts
+    if blog.content:
+        html = blog.content
+    else:
+        # Fetch HTML using the fetcher
+        html = await fetcher.fetch_html(str(blog.url))
     
     # Parse the HTML
     return parse_blog_html(blog, html)

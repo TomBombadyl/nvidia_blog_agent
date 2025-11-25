@@ -1,514 +1,257 @@
-# ENGINEERING STATUS REPORT
-## NVIDIA Tech Blog Intelligence Agent
+# Engineering Status Report
 
-**Project:** nvidia-blog-agent  
-**GCP Project ID:** nvidia-blog-agent  
-**GCP Project Number:** 262844214274  
-**Last Updated:** Phase 3 Complete  
-**Total Tests:** 56 passing
+This document provides technical details about the NVIDIA Tech Blog Agent system architecture, configuration, and runtime behavior.
 
----
+## Production Deployment
 
-## 1. Phases & Progress
+**Service URL**: `https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app`  
+**Status**: ✅ Production deployed and operational  
+**RAG Corpus ID**: Configured via `RAG_CORPUS_ID` environment variable  
+**Location**: `us-east5` (Columbus)
 
-### Phase 1: Contracts & Data Models ✅ COMPLETE
-**Status:** Complete and tested (22 tests passing)
+For complete project overview, see [PROJECT_SUMMARY.md](PROJECT_SUMMARY.md).
 
-Implemented core Pydantic data models that define the contracts for blog discovery, processing, and retrieval throughout the system. All models are designed for Google Cloud serialization, MCP tool compatibility, and flexible serving scenarios. Includes validation rules, custom serializers for datetime/URL fields, and utility functions for ID generation and RAG ingestion format conversion.
+## Vertex RAG Runtime Config
 
-### Phase 2: Discovery Tools ✅ COMPLETE
-**Status:** Complete and tested (20 tests passing)
+### Backend Architecture
 
-Built pure, deterministic functions for discovering and tracking NVIDIA tech blog posts. Implemented HTML feed parsing that extracts blog post metadata into BlogPost objects, and a diffing function that filters newly discovered posts against previously seen IDs. All functions are side-effect free, use static fixtures for testing, and are ready for ADK function tool integration.
+The system uses **Vertex AI RAG Engine + Vertex AI Search + GCS** as the primary RAG backend:
 
-### Phase 3: Scraper via HtmlFetcher / MCP Boundary ✅ COMPLETE
-**Status:** Complete and tested (14 tests passing)
+- **RAG Engine**: Vertex AI RAG Engine manages retrieval and grounding
+- **Search Backend**: Vertex AI Search provides the corpus and indexing
+- **Storage**: Google Cloud Storage (GCS) bucket for document storage
+- **Docs Bucket**: `gs://nvidia-blog-rag-docs` (configurable via `RAG_DOCS_BUCKET`)
 
-Created the scraping layer with an abstract async HtmlFetcher Protocol boundary for future MCP integration. Implemented pure HTML parsing logic that extracts clean text and logical sections from blog post HTML, with robust fallback strategies for various HTML structures. The async fetch_and_parse_blog function orchestrates fetching and parsing using the abstract HtmlFetcher interface.
+### Embedding Model
 
-### Phase 4-9: Not Started
-**Status:** Pending implementation
+- **Model**: `text-embedding-005` (default and recommended)
+- **Publisher**: `publishers/google/models/text-embedding-005`
+- **Dimension**: Full/default embedding dimension (high quality)
+- **Usage**: Automatically used by Vertex AI RAG Engine when corpus is created with Vertex AI Search backend
 
-- Phase 4: Summarization helpers + SummarizerAgent
-- Phase 5: RAG Ingestion Layer
-- Phase 6: RAG Retrieval + QA Agent
-- Phase 7: Workflow Orchestration with ADK
-- Phase 8: Session, Memory & Context Compaction
-- Phase 9: Evaluation Harness & E2E
+### Retrieval Configuration
 
----
+- **Hybrid Search**: **ON** (enabled by default in Vertex AI Search)
+  - Combines vector similarity search with keyword/BM25 search
+  - Provides better retrieval performance than vector-only search
+- **Reranking**: **ON** (available via Vertex AI ranking API)
+  - Uses semantic reranking for improved relevance
+  - Can be configured in retrieval requests
+- **Chunking**:
+  - `chunk_size`: 1024 tokens
+  - `chunk_overlap`: 256 tokens
+  - Configured in Vertex AI Search data store settings
 
-## 2. Project Structure Overview
+### Retrieval Parameters
 
-```
-nvidia_blog_agent/
-├── __init__.py
-├── contracts/
-│   ├── __init__.py
-│   └── blog_models.py          # Core data models (Phase 1)
-├── tools/
-│   ├── __init__.py
-│   ├── discovery.py             # Discovery/watcher tools (Phase 2)
-│   └── scraper.py               # HTML scraping tools (Phase 3)
-├── agents/                      # (Empty - Phase 4+)
-│   └── __init__.py
-├── context/                     # (Empty - Phase 8)
-│   └── __init__.py
-└── eval/                        # (Empty - Phase 9)
-    └── __init__.py
+- **Initial Retrieval**: `top_k=8-10` documents retrieved from RAG Engine (recommended range)
+  - The `k` parameter is configurable; 8-10 is the recommended range for optimal performance
+- **QA Input**: Top 4-6 documents (after reranking) passed to Gemini for answer generation (recommended range)
+  - The actual number of documents used depends on the `k` parameter passed to the QA agent
+- **QA LLM**: Gemini 2.0 Flash
+- **QA Temperature**: Uses default Gemini temperature behavior (typically ~0.2 for factual responses)
+  - Note: Temperature is not explicitly set in code; Gemini uses its default behavior optimized for factual responses
 
-tests/
-├── __init__.py
-├── unit/
-│   ├── __init__.py
-│   ├── test_contracts.py        # Phase 1 tests (22 tests)
-│   ├── agents/
-│   │   └── __init__.py
-│   └── tools/
-│       ├── __init__.py
-│       ├── test_discovery_tool.py    # Phase 2 tests (20 tests)
-│       └── test_scraper_parser.py    # Phase 3 tests (14 tests)
-├── workflows/                   # (Empty - Phase 7)
-│   └── __init__.py
-├── context/                     # (Empty - Phase 8)
-│   └── __init__.py
-└── e2e/                         # (Empty - Phase 9)
-    └── __init__.py
-```
+### Environment Variables
 
-### Module Inventory
+#### Required for Vertex AI RAG
 
-#### `contracts/blog_models.py`
-**Key Classes:**
-- `BlogPost(id: str, url: HttpUrl, title: str, published_at: Optional[datetime], tags: List[str], source: str)`
-- `RawBlogContent(blog_id: str, url: HttpUrl, title: str, html: str, text: str, sections: List[str])`
-- `BlogSummary(blog_id: str, title: str, url: HttpUrl, published_at: Optional[datetime], executive_summary: str, technical_summary: str, bullet_points: List[str], keywords: List[str])`
-- `RetrievedDoc(blog_id: str, title: str, url: HttpUrl, snippet: str, score: float, metadata: Dict[str, Any])`
+- `USE_VERTEX_RAG`: Set to `"true"` to enable Vertex AI RAG Engine
+- `RAG_CORPUS_ID`: Vertex AI RAG corpus ID (numeric ID from corpus resource name)
+- `RAG_DOCS_BUCKET`: GCS bucket for documents (e.g., `gs://nvidia-blog-rag-docs`)
+- `VERTEX_LOCATION`: Region for Vertex AI services (e.g., `us-east5` for Columbus)
 
-**Key Functions:**
-- `generate_post_id(url: str) -> str`
-- `blog_summary_to_dict(summary: BlogSummary) -> Dict[str, Any]`
-- `BlogSummary.to_rag_document() -> str` (instance method)
+#### Optional
 
-#### `tools/discovery.py`
-**Key Functions:**
-- `diff_new_posts(existing_ids: Iterable[str], discovered_posts: Iterable[BlogPost]) -> List[BlogPost]`
-- `discover_posts_from_feed(raw_feed: str, *, default_source: str = "nvidia_tech_blog") -> List[BlogPost]`
+- `RAG_SEARCH_ENGINE_NAME`: Vertex AI Search serving config resource name (if querying Search directly)
+- `GOOGLE_CLOUD_PROJECT`: GCP project ID (can also use `GCP_PROJECT`)
+- `GOOGLE_APPLICATION_CREDENTIALS`: Path to service account JSON file
 
-**Helper Functions:**
-- `_parse_datetime(value: str) -> Optional[datetime]`
-- `_extract_post_from_element(element: Tag, default_source: str) -> Optional[BlogPost]`
+#### State Persistence
 
-#### `tools/scraper.py`
-**Key Protocol:**
-- `HtmlFetcher` (Protocol with `async def fetch_html(url: str) -> str`)
+- `STATE_PATH`: Path for state persistence
+  - **Development**: `state.json` (local file)
+  - **Production**: `gs://nvidia-blog-agent-state/state.json` (GCS bucket, recommended)
 
-**Key Functions:**
-- `parse_blog_html(blog: BlogPost, html: str) -> RawBlogContent`
-- `async def fetch_and_parse_blog(blog: BlogPost, fetcher: HtmlFetcher) -> RawBlogContent`
+### Document Strategy
 
-**Helper Functions:**
-- `_select_article_root(soup: BeautifulSoup) -> Optional[Tag]`
-- `_clean_text(node: Tag) -> str`
-- `_extract_sections(root: Tag) -> list[str]`
+- **One document per blog post**: Each NVIDIA tech blog post becomes one Vertex RAG document
+- **Content**: Full cleaned text from `RawBlogContent.text` (via `BlogSummary.to_rag_document()`)
+- **Storage**: Documents written to GCS as `{blog_id}.txt` files
+- **Metadata**: Stored as `{blog_id}.metadata.json` files in GCS
+- **No separate storage**: Raw HTML and summaries are not stored in separate buckets beyond what GCS RAG ingest writes
 
----
+### State Management
 
-## 3. Contracts & Data Models (Phase 1)
+#### System/App State
 
-### Pydantic Models
+State keys use `app:` prefix:
+- `app:last_seen_blog_ids`: Set of previously seen blog post IDs
+- `app:last_ingestion_results`: Results from the most recent ingestion run
+- `app:ingestion_history`: Historical record of ingestion runs
 
-#### `BlogPost`
-**Fields:**
-- `id: str` - Stable identifier (typically hash of URL), validated non-empty
-- `url: HttpUrl` - Full URL to blog post
-- `title: str` - Title (min_length=1)
-- `published_at: Optional[datetime]` - Publication timestamp
-- `tags: List[str]` - Tags/categories (default: empty list)
-- `source: str` - Source identifier (default: "nvidia_tech_blog")
+State is persisted via `nvidia_blog_agent.context.state_persistence`:
+- `load_state()`: Loads state from local JSON or GCS
+- `save_state()`: Saves state to local JSON or GCS
+- Supports both local files and GCS URIs (e.g., `gs://bucket/state.json`)
 
-**Validation:**
-- ID cannot be empty (stripped)
-- Custom serializer converts datetime to ISO format in JSON
+#### User State
 
-#### `RawBlogContent`
-**Fields:**
-- `blog_id: str` - Reference to BlogPost.id (validated non-empty)
-- `url: HttpUrl` - URL of source blog post
-- `title: str` - Title extracted from HTML (validated non-empty)
-- `html: str` - Raw HTML content
-- `text: str` - Plain text extracted from HTML (validated non-empty)
-- `sections: List[str]` - Logical sections (default: empty list)
+- Reserved for future ADK/Vertex Agent integration
+- Uses `user:` prefix
+- Not required to be persisted in this phase
 
-**Validation:**
-- blog_id, title, and text cannot be empty (stripped)
+## System Architecture
 
-#### `BlogSummary`
-**Fields:**
-- `blog_id: str` - Reference to BlogPost.id
-- `title: str` - Title
-- `url: HttpUrl` - URL
-- `published_at: Optional[datetime]` - Publication timestamp
-- `executive_summary: str` - High-level summary (min_length=10)
-- `technical_summary: str` - Detailed technical summary (min_length=50)
-- `bullet_points: List[str]` - Key takeaways (default: empty list)
-- `keywords: List[str]` - Relevant keywords (default: empty list)
+### RAG Backend Selection
 
-**Validation:**
-- Keywords are normalized to lowercase and deduplicated
-- Custom serializer converts datetime to ISO format in JSON
+The system automatically detects which RAG backend to use:
 
-**Special Methods:**
-- `to_rag_document() -> str` - Converts summary to formatted document string for RAG ingestion
+1. **Vertex AI RAG** (Primary/Recommended):
+   - Triggered when `USE_VERTEX_RAG=true`
+   - Uses `GcsRagIngestClient` for ingestion
+   - Uses `VertexRagRetrieveClient` for retrieval
+   - Requires: `RAG_CORPUS_ID`, `VERTEX_LOCATION`, `RAG_DOCS_BUCKET`
 
-#### `RetrievedDoc`
-**Fields:**
-- `blog_id: str` - Reference to BlogPost.id
-- `title: str` - Title of retrieved blog post
-- `url: HttpUrl` - URL of source blog post
-- `snippet: str` - Relevant text snippet (min_length=1)
-- `score: float` - Relevance score (0.0 <= score <= 1.0)
-- `metadata: Dict[str, Any]` - Additional metadata (default: empty dict)
+2. **HTTP RAG** (Legacy/Alternative):
+   - Triggered when `USE_VERTEX_RAG` is not set or `false`
+   - Uses `HttpRagIngestClient` and `HttpRagRetrieveClient`
+   - Requires: `RAG_BASE_URL`, `RAG_UUID`
 
-**Validation:**
-- Score must be between 0.0 and 1.0 (inclusive)
+### Pipeline Flow
 
-### Utility Functions
+1. **Discovery**: Parse NVIDIA blog RSS/Atom feed or HTML to find new posts
+   - **RSS/Atom Feed Support**: Automatically detects and parses RSS 2.0 and Atom feed formats
+   - **Content Extraction**: Extracts full HTML content from feed entries when available (`<content>` for Atom, `<content:encoded>` for RSS)
+   - **HTML Fallback**: Falls back to HTML page parsing if feed format is not detected
+   - **Benefits**: Avoids 403 errors, faster processing, more reliable than individual page scraping
+2. **Scraping**: Use feed content directly when available, or fetch and parse individual blog post pages as fallback
+   - **Smart Content Usage**: If RSS feed includes content, uses it directly without HTTP requests
+   - **Fallback Fetching**: Only fetches individual pages when feed content is not available
+3. **Summarization**: Generate summaries using Gemini 2.0 Flash
+4. **Ingestion**: Write documents to RAG backend using `run_ingestion_pipeline()` (GCS for Vertex RAG)
+5. **QA**: Retrieve relevant documents and generate grounded answers using Gemini 2.0 Flash
 
-#### `generate_post_id(url: str) -> str`
-- Generates deterministic SHA256 hash of URL as hexadecimal string
-- Used throughout discovery and tracking to create stable IDs
+### RSS/Atom Feed Implementation
 
-#### `blog_summary_to_dict(summary: BlogSummary) -> Dict[str, Any]`
-- Converts BlogSummary to dictionary format for RAG backend ingestion
-- Returns: `{"document": str, "doc_index": str, "doc_metadata": dict}`
-- Document string includes title, URL, summaries, bullet points, keywords
-- Metadata includes blog_id, title, url, published_at, keywords, source
+The system includes comprehensive RSS and Atom feed parsing with automatic content extraction:
 
----
+#### Feed Format Support
 
-## 4. Discovery Tools (Phase 2)
+- **Atom Feeds**: Parses `<feed>` root element with `<entry>` items
+  - Extracts content from `<content type="html">` or `<content type="xhtml">` elements
+  - Handles CDATA sections automatically via ElementTree
+  - Supports namespaced elements (`{http://www.w3.org/2005/Atom}entry`)
+  
+- **RSS 2.0 Feeds**: Parses `<rss>` root element with `<channel>` → `<item>` structure
+  - Extracts content from `<content:encoded>` (preferred) or `<description>` elements
+  - Falls back to description if content:encoded is not available
+  - Supports standard RSS 2.0 date formats (`pubDate`)
 
-### `tools/discovery.py`
+#### Content Extraction Strategy
 
-#### `diff_new_posts(existing_ids: Iterable[str], discovered_posts: Iterable[BlogPost]) -> List[BlogPost]`
-**Purpose:** Filter discovered posts to return only those not in existing_ids.
+1. **Feed Detection**: Automatically detects feed format by checking XML structure
+   - Checks for `<?xml` declaration, `<feed>`, or `<rss>` root elements
+   - Falls back to HTML parsing if XML structure is not detected
 
-**Behavior:**
-- Uses set internally for O(1) lookup efficiency
-- Preserves original order from discovered_posts
-- Does not mutate inputs
-- Returns empty list if all posts exist or if discovered_posts is empty
+2. **Content Priority**:
+   - **Atom**: `<content type="html">` or `<content type="xhtml">` (prefers HTML content)
+   - **RSS 2.0**: `<content:encoded>` (preferred) → `<description>` (fallback)
+   - **HTML Fallback**: If no feed content available, fetches individual post pages
 
-**Inputs:**
-- `existing_ids`: Any iterable of string IDs (list, set, etc.)
-- `discovered_posts`: Any iterable of BlogPost objects
+3. **Content Storage**: Extracted content is stored in `BlogPost.content` field
+   - Used directly by scraper when available
+   - Eliminates need for HTTP requests to individual post pages
 
-**Outputs:**
-- List of BlogPost objects whose IDs are not in existing_ids
+#### Performance Benefits
 
-#### `discover_posts_from_feed(raw_feed: str, *, default_source: str = "nvidia_tech_blog") -> List[BlogPost]`
-**Purpose:** Parse HTML/XML feed content into BlogPost objects.
+- **No 403 Errors**: RSS feeds are designed for programmatic access
+- **Faster Processing**: Single feed fetch vs. multiple individual page fetches
+- **More Reliable**: Avoids rate limiting and IP blocking
+- **Complete Content**: Full HTML content available in feed (NVIDIA feed includes 100% of posts with content)
 
-**Behavior:**
-- Uses BeautifulSoup for HTML parsing
-- Looks for post containers in order: `div.post`, `article`, any `div` with link
-- Extracts: URL from `<a>` href, title from link text, datetime from `<time datetime>`, tags from elements with class "tag"
-- Skips entries without valid URL or title (graceful degradation)
-- Trims whitespace from titles and tags
-- Uses `generate_post_id()` to create stable IDs
-- Returns empty list if feed is empty or parsing fails entirely
+#### Default Feed Configuration
 
-**HTML Structure Assumptions:**
-- Expected structure: `<div class="post"><a class="post-link" href="...">Title</a><time datetime="...">...</time></div>`
-- Falls back to any `<a>` tag if `post-link` class not found
-- Supports `<article>` tags as alternative containers
-- Handles missing datetime gracefully (published_at becomes None)
+- **Default URL**: `https://developer.nvidia.com/blog/feed/`
+- **Format**: Atom feed with full HTML content
+- **Content Coverage**: 100% of posts include full HTML content in feed
+- **Average Content Size**: ~4,000 characters per post
 
-**Helper Functions:**
-- `_parse_datetime(value: str) -> Optional[datetime]`: Parses ISO format dates (YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, etc.)
-- `_extract_post_from_element(element: Tag, default_source: str) -> Optional[BlogPost]`: Extracts BlogPost from BeautifulSoup element
+#### Implementation Details
 
-### `tests/unit/tools/test_discovery_tool.py`
+- **Parser**: `nvidia_blog_agent.tools.discovery._parse_atom_feed()`
+- **Content Extraction**: Handles CDATA, HTML entities, and nested XML elements
+- **Scraper Integration**: `nvidia_blog_agent.tools.scraper.fetch_and_parse_blog()` checks `BlogPost.content` first
+- **Backward Compatible**: Works with or without feed content (graceful fallback)
 
-**Test Coverage:**
-- **diff_new_posts (6 tests):**
-  - Empty existing_ids returns all posts
-  - Some overlap filters correctly
-  - All exist returns empty list
-  - Order preservation
-  - Set input handling
-  - Empty discovered returns empty
+## Evaluation
 
-- **discover_posts_from_feed (14 tests):**
-  - Simple feed with two posts
-  - ID stability and determinism
-  - Malformed post skipping
-  - Whitespace trimming
-  - Optional published_at
-  - Custom source
-  - Empty feed handling
-  - Feed without post containers
-  - Datetime parsing variations
-  - Fallback to any link
-  - Order preservation
-  - Tags extraction
-  - Invalid HTML handling
-  - Article tags as fallback
+The system includes an evaluation harness (`nvidia_blog_agent.eval.harness`) for testing QA performance:
 
-**Total:** 20 tests
+- **EvalCase**: Defines test cases with questions and expected substrings
+- **EvalResult**: Results from evaluating a single case
+- **EvalSummary**: Summary statistics (pass rate, total cases, etc.)
+- **run_qa_evaluation()**: Runs evaluation over multiple cases
+- **summarize_eval_results()**: Computes summary statistics
 
----
+See README.md for examples of running evaluations with Vertex RAG.
 
-## 5. Scraper / HtmlFetcher Boundary (Phase 3)
+### Running Evaluations
 
-### `tools/scraper.py`
+Use the `scripts/run_eval_vertex.py` script to run evaluations against the Vertex AI RAG backend:
 
-#### `HtmlFetcher` Protocol
-**Definition:**
-```python
-class HtmlFetcher(Protocol):
-    async def fetch_html(self, url: str) -> str:
-        """Fetch HTML content for given URL."""
+```bash
+# Run with default test cases
+python scripts/run_eval_vertex.py
+
+# Run with verbose logging
+python scripts/run_eval_vertex.py --verbose
+
+# Save results to JSON file
+python scripts/run_eval_vertex.py --output eval_results.json
+
+# Use custom test cases from JSON file
+python scripts/run_eval_vertex.py --cases-file my_cases.json
 ```
 
-**Purpose:** Abstract async interface for HTML fetching. Allows scraper to work with various implementations (MCP-based fetchers, HTTP clients, test doubles) without coupling to specific implementation.
+### Evaluation Results (Vertex RAG)
 
-**Status:** Protocol only - no concrete implementations in this phase.
+<!-- 
+TODO: Fill in this section after running `python scripts/run_eval_vertex.py`
+Copy the summary and key results from the output, or paste from the JSON output file.
+-->
 
-#### `parse_blog_html(blog: BlogPost, html: str) -> RawBlogContent`
-**Purpose:** Pure, deterministic HTML parsing into RawBlogContent.
+**Evaluation Date**: [YYYY-MM-DD]  
+**Configuration**:
+- RAG Backend: Vertex AI RAG Engine
+- Corpus ID: `[corpus_id]`
+- Location: `[vertex_location]`
+- Embedding Model: `text-embedding-005`
+- Gemini Model: `gemini-2.0-flash-001`
+- Retrieval: `top_k=8-10` (recommended), reranking enabled
 
-**Behavior:**
-- Preserves raw HTML as-is in `html` field
-- Uses `blog.title` for RawBlogContent.title (does not override from HTML)
-- Extracts clean text by:
-  - Selecting article root using fallback strategy
-  - Removing script/style/noscript elements
-  - Normalizing whitespace (collapsing multiple spaces/newlines)
-- Extracts sections by:
-  - Finding all headings (h1-h6) and paragraphs
-  - Grouping paragraphs under their preceding heading
-  - Creating section strings: `"{heading}\n\n{paragraphs}"`
-  - If no headings found but text exists, creates single section with full text
-- Handles empty HTML by using blog.title as placeholder text (RawBlogContent.text cannot be empty)
+**Summary**:
+- Total cases: [N]
+- Passed: [N]
+- Failed: [N]
+- Pass rate: [X]%
 
-**Article Root Selection Strategy (in order):**
-1. `<article>` tag
-2. `div` with class containing: "post", "article", "blog-article", "blog-post", "content", "main-content"
-3. `<main>` tag
-4. `<body>` tag (final fallback)
+**Key Findings**:
+- [Add observations about retrieval quality, answer accuracy, etc.]
 
-**Helper Functions:**
-- `_select_article_root(soup: BeautifulSoup) -> Optional[Tag]`: Implements fallback strategy
-- `_clean_text(node: Tag) -> str`: Removes scripts/styles, normalizes whitespace
-- `_extract_sections(root: Tag) -> list[str]`: Extracts logical sections based on headings
+**Sample Results**:
+1. **Question**: "[Example question]"
+   - Status: ✅ PASS / ❌ FAIL
+   - Retrieved docs: [N]
+   - Top doc score: [X.XXXX]
+   - Answer quality: [Brief assessment]
 
-#### `async def fetch_and_parse_blog(blog: BlogPost, fetcher: HtmlFetcher) -> RawBlogContent`
-**Purpose:** Orchestrates fetching and parsing using HtmlFetcher.
+2. [Add more sample results...]
 
-**Behavior:**
-- Calls `await fetcher.fetch_html(str(blog.url))` to get HTML
-- Passes HTML and BlogPost to `parse_blog_html()`
-- Returns resulting RawBlogContent
-- No direct HTTP or MCP logic - purely orchestrates via abstract interface
+**Notes**:
+- [Any observations about performance, edge cases, improvements needed, etc.]
 
-### `tests/unit/tools/test_scraper_parser.py`
+## References
 
-**Test Coverage:**
-- **parse_blog_html (10 tests):**
-  - Basic article structure
-  - Missing article fallback
-  - No headings (paragraphs only)
-  - Script/style stripping
-  - Multiple heading levels (h1, h2, h3)
-  - Empty HTML handling
-  - Whitespace normalization
-  - Fallback to body
-  - div with content class
-  - main tag fallback
-
-- **fetch_and_parse_blog (4 tests):**
-  - Basic fetch and parse workflow
-  - Sections extraction
-  - Empty HTML handling
-  - HTML preservation
-
-**FakeFetcher Implementation:**
-- Simple test double that records called URLs and returns preset HTML
-- Used to test async functionality without network calls
-- Located in test file: `class FakeFetcher: async def fetch_html(self, url: str) -> str`
-
-**Total:** 14 tests
-
----
-
-## 6. Testing & Quality Status
-
-### Test Summary by Module
-
-| Module | Test File | Tests | Status |
-|--------|-----------|-------|--------|
-| Contracts | `tests/unit/test_contracts.py` | 22 | ✅ All passing |
-| Discovery Tools | `tests/unit/tools/test_discovery_tool.py` | 20 | ✅ All passing |
-| Scraper Tools | `tests/unit/tools/test_scraper_parser.py` | 14 | ✅ All passing |
-| **TOTAL** | | **56** | ✅ **All passing** |
-
-### Test Execution
-- All 56 tests pass consistently
-- Tests use static fixtures (no network calls, no file I/O)
-- Tests are deterministic and fast
-- No flaky tests observed
-
-### Test Coverage Gaps (Not Critical Yet)
-
-**Phase 1 (Contracts):**
-- ✅ Comprehensive coverage of all models and utilities
-- ✅ Edge cases well covered
-
-**Phase 2 (Discovery):**
-- ✅ Good coverage of parsing and diffing logic
-- ⚠️ Could add more edge cases for malformed HTML variations
-- ⚠️ Could test with real-world HTML samples (when available)
-
-**Phase 3 (Scraper):**
-- ✅ Good coverage of parsing logic
-- ✅ Fallback strategies well tested
-- ⚠️ Could add tests for very large HTML documents
-- ⚠️ Could add tests for HTML with nested structures
-- ⚠️ Could add performance tests for large documents
-
-**Future Phases (Not Started):**
-- No tests yet for agents, workflows, context management, or E2E scenarios
-
----
-
-## 7. Assumptions, TODOs, and Design Decisions
-
-### Assumptions
-
-#### HTML Structure Assumptions
-- **Discovery (`discovery.py`):**
-  - Assumes blog feeds use `<div class="post">` containers or `<article>` tags
-  - Assumes links are in `<a>` tags with `href` attributes
-  - Assumes dates are in `<time datetime="...">` format (ISO-like)
-  - Assumes tags are in elements with class "tag"
-
-- **Scraper (`scraper.py`):**
-  - Assumes main content is in `<article>`, `div.post`, `div.content`, `<main>`, or `<body>`
-  - Assumes logical sections are defined by headings (h1-h6) followed by paragraphs
-  - Assumes scripts/styles should be completely removed from text extraction
-  - Assumes whitespace normalization (collapsing multiple spaces/newlines) is acceptable
-
-#### Data Model Assumptions
-- **RawBlogContent.text:** Cannot be empty (validation requirement). Empty HTML uses blog.title as placeholder.
-- **BlogSummary:** Executive summary min 10 chars, technical summary min 50 chars (enforced by validation).
-- **RetrievedDoc.score:** Must be between 0.0 and 1.0 (inclusive).
-
-#### ID Generation
-- Uses SHA256 hash of URL for deterministic, stable IDs
-- Same URL always produces same ID
-- Different URLs produce different IDs
-
-### Design Decisions
-
-#### Section Extraction Strategy
-- Sections are created by grouping paragraphs under their preceding heading
-- Format: `"{heading}\n\n{paragraph1}\n\n{paragraph2}"`
-- If no headings exist, creates single section with full text
-- Order follows document structure
-
-#### Datetime Parsing
-- Supports multiple ISO-like formats: YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, etc.
-- Returns None if parsing fails (graceful degradation)
-- Does not attempt to parse relative dates or non-standard formats
-
-#### Error Handling Philosophy
-- **Discovery:** Skips malformed entries, continues processing (graceful degradation)
-- **Scraper:** Returns minimal RawBlogContent with placeholder text if parsing fails
-- **No exceptions raised** for minor HTML quirks or missing optional fields
-
-#### Async Boundary
-- HtmlFetcher Protocol provides clean abstraction
-- No concrete implementations in scraper module (separation of concerns)
-- Allows easy swapping of implementations (MCP, HTTP, test doubles)
-
-### TODOs and Future Work
-
-#### `tools/discovery.py`
-- No explicit TODOs in code
-- **Future:** Could add support for RSS/Atom feed formats
-- **Future:** Could add support for pagination in feed discovery
-
-#### `tools/scraper.py`
-- No explicit TODOs in code
-- **Future:** Could add support for extracting images/figures
-- **Future:** Could add support for extracting code blocks separately
-- **Future:** Could add support for extracting author information
-- **Future:** Could optimize section extraction for very large documents
-
-#### `contracts/blog_models.py`
-- No explicit TODOs in code
-- **Future:** Could add support for extracting structured metadata (author, reading time, etc.)
-
-#### General
-- **Phase 4+:** All future phases are pending implementation
-- **MCP Integration:** HtmlFetcher Protocol is ready, but no MCP implementation exists yet
-- **Google Cloud Integration:** Models are serializable, but no GCP services are integrated yet
-- **ADK Integration:** Tools are designed for ADK, but no agents are implemented yet
-
-### Known Limitations
-
-1. **HTML Parsing:** Currently handles common structures but may not handle all edge cases (nested articles, complex layouts)
-2. **Section Extraction:** Simple heading-based approach may not capture all semantic structures
-3. **No Real Network:** All tests use static fixtures - real-world HTML may reveal additional edge cases
-4. **No Performance Testing:** Large documents or high-volume scenarios not yet tested
-
----
-
-## 8. Dependencies
-
-### Current Dependencies (`requirements.txt`)
-- `pydantic>=2.0.0,<3.0.0` - Data validation and serialization
-- `httpx>=0.25.0` - HTTP client (for future RAG integration)
-- `pytest>=7.4.0` - Testing framework
-- `pytest-asyncio>=0.21.0` - Async test support
-- `beautifulsoup4>=4.12.0` - HTML parsing
-- `lxml>=4.9.0` - HTML parser backend
-- `python-dateutil>=2.8.0` - Date/time handling
-
-### Future Dependencies (Commented in requirements.txt)
-- `google-genai-adk>=0.1.0` - Google ADK (for Phase 4+)
-
----
-
-## 9. Next Steps
-
-### Immediate Next Phase: Phase 4 - Summarization Helpers + SummarizerAgent
-
-**Required Implementation:**
-1. `tools/summarization.py`:
-   - `build_summary_prompt(raw: RawBlogContent) -> str`
-   - `parse_summary_json(raw: RawBlogContent, json_text: str, published_at=None) -> BlogSummary`
-
-2. `agents/summarizer_agent.py`:
-   - ADK LlmAgent using Gemini
-   - Reads RawBlogContent from session.state
-   - Uses build_summary_prompt() to create prompt
-   - Parses model JSON output with parse_summary_json()
-   - Writes BlogSummary back into session.state
-
-3. Tests:
-   - `tests/unit/tools/test_summarization.py`
-   - `tests/agents/test_summarizer_agent.py`
-
-**Prerequisites:**
-- Google ADK dependency needs to be added
-- Gemini API access/configuration needed
-- Session state management (basic) needed for agent
-
----
-
-**Report Generated:** Phase 3 Complete  
-**Ready for Handoff:** ✅ Yes - All phases documented, all tests passing, clear next steps defined
-
+- [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md): Complete setup and deployment guide for Vertex AI RAG
+- [README.md](README.md): User-facing documentation and usage examples

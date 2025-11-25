@@ -1,0 +1,12 @@
+{
+  "name": "nvidia-blog-agent",
+  "version": "0.1.0",
+  "description": "MCP server that connects to the NVIDIA Tech Blog Cloud Run RAG service.",
+  "client": {
+    "transport": {
+      "type": "stdio",
+      "command": ["python", "nvidia_blog_mcp_server.py"]
+    }
+  }
+}
+

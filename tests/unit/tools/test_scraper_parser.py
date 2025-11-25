@@ -430,3 +430,48 @@ class TestFetchAndParseBlog:
         
         assert content.html == html
 
+    @pytest.mark.asyncio
+    async def test_uses_feed_content_when_available(self):
+        """Test that feed content is used directly instead of fetching."""
+        # BlogPost with content from RSS feed
+        feed_content = "<article><h1>Feed Title</h1><p>Content from RSS feed</p></article>"
+        blog = BlogPost(
+            id="test-id",
+            url="https://developer.nvidia.com/blog/test",
+            title="Test Post",
+            content=feed_content
+        )
+        
+        # Fetcher should NOT be called when content is available
+        fetcher = FakeFetcher("This should not be used")
+        content = await fetch_and_parse_blog(blog, fetcher)
+        
+        # Verify fetcher was NOT called
+        assert len(fetcher.called_urls) == 0
+        
+        # Verify content from feed was used
+        assert content.html == feed_content
+        assert "Content from RSS feed" in content.text
+
+    @pytest.mark.asyncio
+    async def test_fetches_when_content_not_available(self):
+        """Test that fetcher is called when blog.content is None."""
+        blog = BlogPost(
+            id="test-id",
+            url="https://developer.nvidia.com/blog/test",
+            title="Test Post",
+            content=None  # No feed content
+        )
+        
+        html = "<article><h1>Fetched Title</h1><p>Fetched content</p></article>"
+        fetcher = FakeFetcher(html)
+        content = await fetch_and_parse_blog(blog, fetcher)
+        
+        # Verify fetcher WAS called
+        assert len(fetcher.called_urls) == 1
+        assert fetcher.called_urls[0] == "https://developer.nvidia.com/blog/test"
+        
+        # Verify fetched content was used
+        assert content.html == html
+        assert "Fetched content" in content.text
+

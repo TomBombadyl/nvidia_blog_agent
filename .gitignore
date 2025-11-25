@@ -25,6 +25,7 @@ venv/
 env/
 ENV/
 .venv
+.env 
 
 # IDE
 .vscode/
@@ -40,6 +41,17 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Secrets and credentials
+*-sa.json
+*service-account*.json
+*.key
+*.pem
+credentials.json
+
+# State files (may contain sensitive data)
+state.json
+*.state.json
 
 # Logs
 *.log
