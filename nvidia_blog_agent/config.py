@@ -99,17 +99,7 @@ def load_config_from_env() -> AppConfig:
     gemini_location = os.environ.get("GEMINI_LOCATION")
 
     # Check if using Vertex AI RAG
-    # Default to Vertex AI RAG if RAG_CORPUS_ID and VERTEX_LOCATION are set
-    # This avoids requiring USE_VERTEX_RAG to be explicitly set
-    use_vertex_rag_env = os.environ.get("USE_VERTEX_RAG", "").lower()
-    has_vertex_config = (
-        os.environ.get("RAG_CORPUS_ID") or os.environ.get("RAG_UUID")
-    ) and os.environ.get("VERTEX_LOCATION")
-    
-    use_vertex_rag = (
-        use_vertex_rag_env == "true" 
-        or (use_vertex_rag_env != "false" and has_vertex_config)
-    )
+    use_vertex_rag = os.environ.get("USE_VERTEX_RAG", "").lower() == "true"
 
     if use_vertex_rag:
         # Vertex AI RAG configuration
