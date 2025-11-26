@@ -29,7 +29,7 @@ from typing import Optional, List
 from contextlib import asynccontextmanager
 from io import StringIO
 
-from fastapi import FastAPI, HTTPException, status, Header, Request, Response
+from fastapi import FastAPI, HTTPException, status, Header, Request, Response, Body
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.routing import Mount
@@ -126,6 +126,12 @@ class BatchAskResponse(BaseModel):
     """Response model for /ask/batch endpoint."""
 
     results: List[AskResponse] = Field(..., description="List of answers")
+
+
+class IngestRequest(BaseModel):
+    """Request model for /ingest endpoint."""
+
+    feed_url: Optional[str] = Field(None, description="Optional custom feed URL (defaults to NVIDIA Tech Blog)")
 
 
 class IngestResponse(BaseModel):
@@ -695,8 +701,8 @@ async def clear_cache(x_api_key: Optional[str] = Header(None, alias="X-API-Key")
 
 @app.post("/ingest", response_model=IngestResponse)
 async def trigger_ingestion(
+    request: Optional[IngestRequest] = Body(default=None),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    feed_url: Optional[str] = None,
 ):
     """Trigger the ingestion pipeline to discover and ingest new blog posts.
 
@@ -710,8 +716,8 @@ async def trigger_ingestion(
     X-API-Key header to match.
 
     Args:
+        request: IngestRequest containing optional feed_url (can be None or empty JSON {})
         x_api_key: Optional API key from X-API-Key header
-        feed_url: Optional custom feed URL (defaults to NVIDIA Tech Blog)
 
     Returns:
         IngestResponse with counts and status message
@@ -736,6 +742,9 @@ async def trigger_ingestion(
 
     try:
         logger.info("Starting ingestion pipeline...")
+
+        # Extract feed_url from request (handle None case for empty body)
+        feed_url = request.feed_url if request else None
 
         # Load state
         state = load_state(_state_path)

@@ -103,13 +103,22 @@ def load_config_from_env() -> AppConfig:
 
     if use_vertex_rag:
         # Vertex AI RAG configuration
-        rag_uuid = os.environ.get("RAG_CORPUS_ID") or os.environ.get("RAG_UUID")
+        # Try Secret Manager first, then fall back to environment variable
+        from nvidia_blog_agent.secrets import get_secret
+        
+        project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
+        rag_uuid = get_secret("rag-corpus-id", project_id=project_id)
+        if not rag_uuid:
+            # Fallback to environment variable (for local dev or if secret not set)
+            rag_uuid = os.environ.get("RAG_CORPUS_ID") or os.environ.get("RAG_UUID")
+        
         vertex_location = os.environ.get("VERTEX_LOCATION")
         docs_bucket = os.environ.get("RAG_DOCS_BUCKET")
 
         if not rag_uuid:
             raise KeyError(
-                "RAG_CORPUS_ID or RAG_UUID environment variable is required for Vertex AI RAG"
+                "RAG_CORPUS_ID is required for Vertex AI RAG. "
+                "Set it in Secret Manager (rag-corpus-id) or as environment variable (RAG_CORPUS_ID)"
             )
         if not vertex_location:
             raise KeyError(
