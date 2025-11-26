@@ -15,21 +15,28 @@ import os
 import sys
 from pathlib import Path
 
-# Find the directory containing this script
+# Find the directory containing this script (mcp/)
 script_dir = Path(__file__).resolve().parent
 
+# Find the project root (parent of mcp/)
+project_root = script_dir.parent
+
 # Change to the project root directory
-os.chdir(script_dir)
+os.chdir(project_root)
 
 # Add project root to Python path (in case imports are needed)
-if str(script_dir) not in sys.path:
-    sys.path.insert(0, str(script_dir))
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 # Now import and run the actual MCP server
 if __name__ == "__main__":
-    # Import the main function from the MCP server
-    from nvidia_blog_mcp_server import main
-    import asyncio
+    # Import using direct file path since mcp is not a package
+    import importlib.util
+    mcp_server_path = script_dir / "nvidia_blog_mcp_server.py"
+    spec = importlib.util.spec_from_file_location("nvidia_blog_mcp_server", mcp_server_path)
+    mcp_server = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mcp_server)
     
-    asyncio.run(main())
+    import asyncio
+    asyncio.run(mcp_server.main())
 
