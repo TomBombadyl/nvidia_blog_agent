@@ -31,13 +31,16 @@ class BlogPost(BaseModel):
     url: HttpUrl = Field(..., description="Full URL to the blog post")
     title: str = Field(..., description="Title of the blog post", min_length=1)
     published_at: Optional[datetime] = Field(
-        None, description="Publication timestamp if available"
+        None, description="Publication timestamp (extracted from feed, may be None if not available)"
     )
     tags: List[str] = Field(
         default_factory=list, description="Tags or categories associated with the post"
     )
     source: str = Field(
         default="nvidia_tech_blog", description="Source identifier for the blog"
+    )
+    content_type: Optional[str] = Field(
+        None, description="Content type from feed (e.g., 'releases', 'blogs', 'press_releases')"
     )
     content: Optional[str] = Field(
         None,
@@ -90,6 +93,15 @@ class RawBlogContent(BaseModel):
         default_factory=list,
         description="Categories or tags associated with the blog post (from discovery phase)",
     )
+    published_at: Optional[datetime] = Field(
+        None, description="Publication timestamp (from RSS feed metadata)"
+    )
+    source: str = Field(
+        default="nvidia_tech_blog", description="Source identifier (from feed metadata)"
+    )
+    content_type: Optional[str] = Field(
+        None, description="Content type from feed (e.g., 'releases', 'blogs')"
+    )
 
     @field_validator("blog_id", "title", "text")
     @classmethod
@@ -115,7 +127,15 @@ class BlogSummary(BaseModel):
     blog_id: str = Field(..., description="Reference to the BlogPost.id")
     title: str = Field(..., description="Title of the blog post")
     url: HttpUrl = Field(..., description="URL of the source blog post")
-    published_at: Optional[datetime] = Field(None, description="Publication timestamp")
+    published_at: Optional[datetime] = Field(
+        None, description="Publication timestamp (from RSS feed metadata)"
+    )
+    source: str = Field(
+        default="nvidia_tech_blog", description="Source identifier (determined from feed metadata)"
+    )
+    content_type: Optional[str] = Field(
+        None, description="Content type from feed (e.g., 'releases', 'blogs', 'press_releases')"
+    )
     executive_summary: str = Field(
         ..., description="High-level executive summary (1-3 sentences)", min_length=10
     )
@@ -183,6 +203,15 @@ class BlogSummary(BaseModel):
 
         if self.published_at:
             parts.insert(2, f"Published: {self.published_at.isoformat()}")
+        
+        # Add source and content_type metadata
+        metadata_parts = []
+        if self.source:
+            metadata_parts.append(f"Source: {self.source}")
+        if self.content_type:
+            metadata_parts.append(f"Content Type: {self.content_type}")
+        if metadata_parts:
+            parts.insert(3, " | ".join(metadata_parts))
 
         return "\n".join(parts)
 
@@ -266,6 +295,7 @@ def blog_summary_to_dict(summary: BlogSummary) -> Dict[str, Any]:
             if summary.published_at
             else None,
             "keywords": summary.keywords,
-            "source": "nvidia_tech_blog",
+            "source": summary.source,
+            "content_type": summary.content_type,
         },
     }

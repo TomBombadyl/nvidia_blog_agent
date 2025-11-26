@@ -111,6 +111,8 @@ def parse_summary_json(
     json_text: str,
     published_at: Optional[datetime] = None,
     categories: Optional[List[str]] = None,
+    source: Optional[str] = None,
+    content_type: Optional[str] = None,
 ) -> BlogSummary:
     """Parse LLM JSON response into a BlogSummary object.
 
@@ -232,12 +234,21 @@ def parse_summary_json(
             if cat not in keywords:
                 keywords.append(cat)
 
+    # Use published_at from parameter, raw object, or None
+    final_published_at = published_at or (raw.published_at if hasattr(raw, "published_at") else None)
+    
+    # Use source/content_type from parameter, raw object, or defaults
+    final_source = source or (raw.source if hasattr(raw, "source") else "nvidia_tech_blog")
+    final_content_type = content_type or (raw.content_type if hasattr(raw, "content_type") else None)
+    
     # Create BlogSummary
     return BlogSummary(
         blog_id=raw.blog_id,
         title=raw.title,
         url=raw.url,
-        published_at=published_at,
+        published_at=final_published_at,
+        source=final_source,
+        content_type=final_content_type,
         executive_summary=executive_summary,
         technical_summary=technical_summary,
         bullet_points=bullet_points,

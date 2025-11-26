@@ -77,6 +77,7 @@ class SummarizerLike(Protocol):
 def discover_new_posts_from_feed(
     feed_html: str,
     existing_ids: Optional[Iterable[str]] = None,
+    default_source: str = "nvidia_tech_blog",
 ) -> tuple[List[BlogPost], List[BlogPost]]:
     """Parse the feed HTML, then diff against existing_ids to find new posts.
 
@@ -90,6 +91,8 @@ def discover_new_posts_from_feed(
         feed_html: Raw HTML string containing the blog feed.
         existing_ids: Optional iterable of blog post IDs that have already been processed.
                      If None, all discovered posts are treated as new.
+        default_source: Source identifier to assign to discovered BlogPost objects.
+                       Defaults to "nvidia_tech_blog".
 
     Returns:
         Tuple of (discovered_posts, new_posts), where:
@@ -103,7 +106,7 @@ def discover_new_posts_from_feed(
         >>> len(new) <= len(discovered)
         True
     """
-    discovered = discover_posts_from_feed(feed_html)
+    discovered = discover_posts_from_feed(feed_html, default_source=default_source)
 
     if existing_ids is None:
         # If no history provided, treat all as new
@@ -117,6 +120,11 @@ async def fetch_raw_contents_for_posts(
     posts: List[BlogPost],
     fetcher: HtmlFetcher,
 ) -> List[RawBlogContent]:
+    """Fetch and parse HTML content for blog posts.
+    
+    Preserves metadata (published_at, source, content_type, tags) from BlogPost
+    in the resulting RawBlogContent objects.
+    """
     """Fetch and parse HTML for each BlogPost into RawBlogContent.
 
     This function processes multiple posts concurrently using asyncio.gather,
@@ -225,6 +233,7 @@ async def run_ingestion_pipeline(
     fetcher: HtmlFetcher,
     summarizer: SummarizerLike,
     rag_client: RagIngestClient,
+    default_source: str = "nvidia_tech_blog",
 ) -> IngestionResult:
     """Run the end-to-end ingestion pipeline.
 
@@ -247,6 +256,8 @@ async def run_ingestion_pipeline(
         fetcher: HtmlFetcher implementation for fetching blog post HTML.
         summarizer: SummarizerLike implementation for generating summaries.
         rag_client: RagIngestClient implementation for ingesting summaries into RAG.
+        default_source: Source identifier to assign to discovered BlogPost objects.
+                       Defaults to "nvidia_tech_blog".
 
     Returns:
         IngestionResult containing:
@@ -271,7 +282,9 @@ async def run_ingestion_pipeline(
         True
     """
     # Stage 1: Discovery
-    discovered_posts, new_posts = discover_new_posts_from_feed(feed_html, existing_ids)
+    discovered_posts, new_posts = discover_new_posts_from_feed(
+        feed_html, existing_ids, default_source=default_source
+    )
 
     # Stage 2: Scraping (concurrent)
     raw_contents: List[RawBlogContent] = await fetch_raw_contents_for_posts(

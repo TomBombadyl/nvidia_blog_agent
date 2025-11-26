@@ -60,7 +60,8 @@ def _build_payload(summary: BlogSummary, uuid: str) -> dict:
         if summary.published_at
         else None,
         "keywords": summary.keywords,
-        "source": "nvidia_tech_blog",
+        "source": summary.source,
+        "content_type": summary.content_type,
         "uuid": uuid,
     }
 

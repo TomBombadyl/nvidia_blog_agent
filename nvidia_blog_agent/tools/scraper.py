@@ -246,6 +246,9 @@ def parse_blog_html(blog: BlogPost, html: str) -> RawBlogContent:
             text=placeholder_text,
             sections=[],
             categories=blog.tags,  # Pass categories from BlogPost
+            published_at=blog.published_at,  # Preserve date from BlogPost
+            source=blog.source,  # Preserve source from BlogPost
+            content_type=blog.content_type,  # Preserve content_type from BlogPost
         )
 
     # Extract sections
@@ -264,6 +267,9 @@ def parse_blog_html(blog: BlogPost, html: str) -> RawBlogContent:
         text=text,
         sections=sections,
         categories=blog.tags,  # Pass categories from BlogPost
+        published_at=blog.published_at,  # Preserve date from BlogPost
+        source=blog.source,  # Preserve source from BlogPost
+        content_type=blog.content_type,  # Preserve content_type from BlogPost
     )
 
 

@@ -211,14 +211,89 @@ def _extract_post_from_element(
         return None
 
 
+def _determine_source_from_metadata(
+    url: str,
+    tags: List[str],
+    content_type: Optional[str],
+    default_source: str,
+) -> str:
+    """Determine source identifier from feed metadata.
+    
+    Uses a hierarchical approach:
+    1. contentType field (most specific)
+    2. Categories/tags (semantic classification)
+    3. URL patterns (fallback)
+    4. Default source (last resort)
+    
+    Args:
+        url: Blog post URL
+        tags: List of category/tag strings from feed
+        content_type: contentType field from feed (if available)
+        default_source: Default source identifier
+        
+    Returns:
+        Determined source identifier string
+    """
+    url_lower = url.lower()
+    tags_lower = [t.lower() for t in tags] if tags else []
+    
+    # Priority 1: Use contentType if available (News Releases feed)
+    if content_type:
+        if content_type == "releases":
+            # Check categories to differentiate Press Releases vs Blog posts in releases feed
+            if "press releases" in tags_lower or "press release" in tags_lower:
+                return "nvidia_press_releases"
+            elif "blogs" in tags_lower or "blog" in tags_lower:
+                return "nvidia_blog"
+            else:
+                return "nvidia_news_releases"
+        else:
+            return f"nvidia_{content_type}"
+    
+    # Priority 2: Use categories/tags for classification
+    if tags:
+        # Press releases
+        if any("press release" in t or "press" in t for t in tags_lower):
+            return "nvidia_press_releases"
+        
+        # Blog posts - check URL to differentiate
+        if any("blog" in t for t in tags_lower):
+            if "developer.nvidia.com" in url_lower:
+                return "nvidia_tech_blog"
+            elif "blogs.nvidia.com" in url_lower:
+                return "nvidia_blog"
+            else:
+                return "nvidia_blog"
+        
+        # Technical content
+        if any(t in ["developer", "technical", "tutorial", "code", "api"] for t in tags_lower):
+            return "nvidia_tech_blog"
+    
+    # Priority 3: URL pattern matching
+    if "developer.nvidia.com" in url_lower:
+        return "nvidia_tech_blog"
+    elif "blogs.nvidia.com" in url_lower:
+        return "nvidia_blog"
+    elif "nvidianews.nvidia.com" in url_lower:
+        return "nvidia_news_releases"
+    
+    # Priority 4: Default fallback
+    return default_source
+
+
 def _parse_atom_feed(raw_feed: str, default_source: str) -> List[BlogPost]:
     """Parse Atom/RSS XML feed into BlogPost objects.
 
     Supports both Atom and RSS 2.0 feed formats.
+    Intelligently extracts metadata including:
+    - Dates (pubDate, modDate, published, updated)
+    - Categories/tags (nested and flat structures)
+    - contentType (News Releases feed)
+    - Content (full HTML when available)
 
     Args:
         raw_feed: Raw XML string containing Atom or RSS feed.
-        default_source: Source identifier for BlogPost objects.
+        default_source: Source identifier for BlogPost objects (used as fallback).
 
     Returns:
         List of BlogPost objects parsed from the feed.
@@ -325,7 +400,7 @@ def _parse_atom_feed(raw_feed: str, default_source: str) -> List[BlogPost]:
                 if not url:
                     continue
 
-                # Extract published date
+                # Extract published date (try multiple fields)
                 published_at = None
                 if is_atom or not is_rss:
                     # Atom format: <published> or <updated>
@@ -341,11 +416,25 @@ def _parse_atom_feed(raw_feed: str, default_source: str) -> List[BlogPost]:
                         if published_elem is None:
                             published_elem = entry.find("updated")
                 else:
-                    # RSS 2.0 format: <pubDate>
+                    # RSS 2.0 format: <pubDate> or <modDate> (News Releases feed uses modDate)
                     published_elem = entry.find("pubDate")
+                    if published_elem is None:
+                        published_elem = entry.find("modDate")
 
                 if published_elem is not None and published_elem.text:
                     published_at = _parse_datetime(published_elem.text)
+                
+                # Fallback to current time if no date found (ensure date is always present)
+                if published_at is None:
+                    from datetime import datetime, timezone
+                    published_at = datetime.now(timezone.utc)
+
+                # Extract contentType (News Releases feed has this)
+                content_type = None
+                if is_rss:
+                    contentType_elem = entry.find("contentType")
+                    if contentType_elem is not None and contentType_elem.text:
+                        content_type = contentType_elem.text.strip().lower()
 
                 # Extract categories/tags
                 tags = []
@@ -362,8 +451,14 @@ def _parse_atom_feed(raw_feed: str, default_source: str) -> List[BlogPost]:
                         if term:
                             tags.append(term)
                 else:
-                    # RSS 2.0 format: <category>...</category>
-                    category_elems = entry.findall("category")
+                    # RSS 2.0 format: <category>...</category> or <categories><category>...</category></categories>
+                    # Try nested categories first (News Releases format)
+                    categories_elem = entry.find("categories")
+                    if categories_elem is not None:
+                        category_elems = categories_elem.findall("category")
+                    else:
+                        category_elems = entry.findall("category")
+                    
                     for cat in category_elems:
                         cat_text = (cat.text or "").strip()
                         if cat_text:
@@ -426,6 +521,14 @@ def _parse_atom_feed(raw_feed: str, default_source: str) -> List[BlogPost]:
                 # Generate stable ID from URL
                 post_id = generate_post_id(url)
 
+                # Determine source using intelligent metadata analysis
+                determined_source = _determine_source_from_metadata(
+                    url=url,
+                    tags=tags,
+                    content_type=content_type,
+                    default_source=default_source,
+                )
+
                 # Create BlogPost
                 post = BlogPost(
                     id=post_id,
@@ -433,7 +536,8 @@ def _parse_atom_feed(raw_feed: str, default_source: str) -> List[BlogPost]:
                     title=title_text,
                     published_at=published_at,
                     tags=tags,
-                    source=default_source,
+                    source=determined_source,
+                    content_type=content_type,
                     content=content,
                 )
                 posts.append(post)

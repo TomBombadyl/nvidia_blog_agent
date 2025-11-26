@@ -104,7 +104,8 @@ class GcsRagIngestClient(RagIngestClient):
             if summary.published_at
             else None,
             "keywords": summary.keywords,
-            "source": "nvidia_tech_blog",
+            "source": summary.source,
+            "content_type": summary.content_type,
         }
         metadata_blob.upload_from_string(
             json.dumps(metadata, indent=2), content_type="application/json"

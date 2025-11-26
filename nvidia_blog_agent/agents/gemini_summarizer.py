@@ -134,6 +134,8 @@ class GeminiSummarizer(SummarizerLike):
                 json_text,
                 published_at=raw.published_at if hasattr(raw, "published_at") else None,
                 categories=raw.categories,
+                source=raw.source if hasattr(raw, "source") else None,
+                content_type=raw.content_type if hasattr(raw, "content_type") else None,
             )
             summaries.append(summary)
 
