@@ -109,9 +109,12 @@ The script automatically:
 
 **See the deployment script** (`deploy_cloud_run.ps1`) for step-by-step manual commands.
 
-### Environment Variables
+### Environment Variables and Secrets
 
-Required for Cloud Run:
+**Secrets** (stored in Secret Manager):
+- `INGEST_API_KEY` - Automatically created/retrieved from Secret Manager (`ingest-api-key`)
+
+**Configuration** (environment variables):
 - `GOOGLE_CLOUD_PROJECT=nvidia-blog-agent`
 - `USE_VERTEX_RAG=true`
 - `RAG_CORPUS_ID=YOUR_CORPUS_ID`
@@ -119,8 +122,9 @@ Required for Cloud Run:
 - `RAG_DOCS_BUCKET=gs://nvidia-blog-rag-docs`
 - `GEMINI_MODEL_NAME=gemini-2.0-flash-001`
 - `GEMINI_LOCATION=us-east5`
-- `INGEST_API_KEY=YOUR_API_KEY` (generated during deployment)
 - `STATE_PATH=gs://nvidia-blog-agent-state/state.json`
+
+The deployment script automatically sets up Secret Manager for `INGEST_API_KEY`. See `setup_secrets.ps1` for manual secret management.
 
 ## Part 3: Cloud Scheduler Setup
 

@@ -2,7 +2,7 @@
 
 A production-ready RAG system that automatically discovers, processes, and answers questions about NVIDIA technical blog content using Google Cloud Platform, Vertex AI, and Gemini.
 
-> **Status**: ✅ Production deployed · Vertex AI RAG Engine · 190+ tests passing
+> **Status**: ✅ Production deployed · Vertex AI RAG Engine · 190+ tests passing · Automated daily ingestion operational
 
 ---
 
@@ -17,7 +17,7 @@ This service:
 - Exposes a **Cloud Run HTTP API** so you can:
   - Ask questions about NVIDIA blogs (`POST /ask`)
   - Process multiple questions at once (`POST /ask/batch`)
-  - Trigger ingestion of new posts (`POST /ingest`, API-key protected)
+  - Trigger ingestion of new posts (`POST /ingest`, public endpoint)
   - Check health with dependency status (`GET /health`)
   - View analytics and metrics (`GET /analytics`)
   - Access query history and export data (`GET /history`, `GET /export`)
@@ -143,7 +143,7 @@ export GEMINI_LOCATION="us-east5"
 
 export RAG_BASE_URL="https://your-rag-service.run.app"
 export RAG_UUID="corpus-id"
-export RAG_API_KEY="optional-api-key"
+# No API keys needed - all endpoints are public
 ```
 
 ### 4.3 Optional configuration (v0.2.0 features)
@@ -165,8 +165,7 @@ export STRUCTURED_LOGGING="false"          # Enable JSON logging
 export CORS_ORIGINS="*"                    # CORS allowed origins
 
 # Admin endpoints
-export ADMIN_API_KEY="your-admin-key"      # For /admin/* endpoints
-export INGEST_API_KEY="your-ingest-key"   # For /ingest endpoint
+# No API keys needed - all endpoints are public
 ```
 
 ---
@@ -239,7 +238,8 @@ The project includes a FastAPI service for Cloud Run with comprehensive features
 - **`GET /health`**: Health check with dependency status
 - **`GET /`**: Service information
 - **`POST /ask`**: Answer questions using RAG (with caching and session support)
-- **`POST /ingest`**: Trigger ingestion (protected by `X-API-Key`)
+- **`POST /ingest`**: Trigger ingestion (public endpoint, also called automatically by Cloud Scheduler)
+- **`POST /mcp`**: MCP HTTP/SSE endpoint (available but not used; MCP server uses stdio)
 
 ### 6.2 New Features (v0.2.0)
 
@@ -283,13 +283,12 @@ curl "https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/export?format=csv&sessio
   -o history.csv
 
 # Admin statistics (requires admin API key)
-curl -H "X-API-Key: YOUR_ADMIN_API_KEY" \
+curl \
   https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/admin/stats
 
 # Trigger ingestion (requires API key)
 curl -X POST https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app/ingest \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_INGEST_API_KEY" \
   -d '{"feed_url": "https://developer.nvidia.com/blog/feed/"}'
 ```
 
@@ -333,11 +332,12 @@ The script handles:
 - Deploying Cloud Run
 - Wiring IAM and Artifact Registry
 
-Detailed deployment and Cloud Scheduler setup (daily ingestion) are documented in:
-- `docs/deployment.md`
-- `docs/development.md`
-- `docs/security.md`
-- `docs/adding-historical-blogs.md`
+Detailed deployment and Cloud Scheduler setup are documented in:
+- `docs/deployment.md` – Full deployment guide including Cloud Run and Scheduler
+- `docs/development.md` – Local development setup
+- `docs/security.md` – Security practices including Secret Manager integration
+- `docs/mcp-setup.md` – MCP server configuration and troubleshooting
+- `docs/adding-historical-blogs.md` – Adding historical blog content
 
 ---
 
@@ -360,21 +360,115 @@ Programmatic usage is documented in `docs/architecture.md`.
 
 ---
 
-## 8. MCP integration (optional)
+## 8. Automated ingestion with Cloud Scheduler
 
-This repo includes an MCP server that wraps the Cloud Run API:
+The service includes automated daily ingestion via Google Cloud Scheduler:
 
-- `nvidia_blog_mcp_server.py` – stdio MCP server
+- **Schedule**: Daily at 7:00 AM ET (`0 7 * * *` in America/New_York timezone)
+- **Authentication**: OIDC (OpenID Connect) for secure Cloud Run invocation
+- **Endpoint**: `POST /ingest` (protected by API key at application level)
+- **Status**: ✅ **Operational** - Successfully running since November 2025
 
-Tools:
-- `ask_nvidia_blog` – read-only QA
-- `trigger_ingest` – ingestion with API key
+### Setup
 
-See `docs/mcp-setup.md` for configuration and host integration (Cursor, Claude Desktop, etc.).
+The scheduler is configured via `setup_scheduler.ps1`:
+
+```powershell
+.\setup_scheduler.ps1
+```
+
+This script:
+- Creates/updates the Cloud Scheduler job
+- Configures OIDC authentication
+- Retrieves API key from Secret Manager
+- Grants necessary IAM permissions (`roles/run.invoker`)
+
+### Monitoring
+
+Check scheduler execution logs:
+
+```bash
+gcloud scheduler jobs describe nvidia-blog-daily-ingest \
+  --location=us-central1 \
+  --project=nvidia-blog-agent
+```
+
+View recent execution history in Cloud Console or via:
+
+```bash
+gcloud logging read "resource.type=cloud_scheduler_job" \
+  --limit=10 \
+  --project=nvidia-blog-agent
+```
+
+### Manual trigger
+
+You can manually trigger a run:
+
+```bash
+gcloud scheduler jobs run nvidia-blog-daily-ingest \
+  --location=us-central1 \
+  --project=nvidia-blog-agent
+```
 
 ---
 
-## 9. Project structure (short version)
+## 9. MCP integration (Model Context Protocol)
+
+This repo includes an MCP server that provides tools for AI assistants (Cursor, Claude Desktop, etc.):
+
+### Available Tools
+
+- **`ask_nvidia_blog`** – Ask questions about NVIDIA Tech Blogs (read-only)
+  - Parameters: `question` (required), `top_k` (optional, default: 8, range: 1-20)
+  - Returns: Answer with source citations
+
+**Note:** Ingestion is handled automatically by Cloud Scheduler (daily at 7:00 AM ET). No manual trigger tool is needed.
+
+### Configuration
+
+The MCP server runs as a **stdio server** (similar to other MCP servers like `gcloud`, `observability`, etc.):
+
+- Runs locally as a Python subprocess
+- Connects to Cloud Run service via HTTP
+- Uses Application Default Credentials (ADC) for authentication
+- Configured in `mcp.json`:
+
+```json
+{
+  "nvidia-blog-mcp": {
+    "command": "python",
+    "args": ["-u", "mcp/run_mcp_server.py"],
+    "env": {
+      "NVIDIA_BLOG_SERVICE_URL": "https://nvidia-blog-agent-yuav3bbrka-uc.a.run.app"
+    }
+  }
+}
+```
+
+### Setup for Cursor IDE
+
+1. Copy `mcp.json` to `.cursor/mcp.json`:
+   ```powershell
+   Copy-Item mcp.json .cursor\mcp.json
+   ```
+
+2. Restart Cursor IDE to load the MCP configuration
+
+3. The tools will appear in Cursor's MCP tools panel
+
+### Status
+
+✅ **MCP Server**: Operational (stdio server, connects to Cloud Run)  
+✅ **Tool Registration**: 1 tool available (`ask_nvidia_blog`)  
+✅ **Authentication**: Uses Google Cloud Application Default Credentials  
+✅ **Scheduler Integration**: Daily ingestion automated via Cloud Scheduler (7:00 AM ET)  
+
+See `mcp/mcp-setup.md` for detailed setup instructions and troubleshooting.
+
+---
+
+## 10. Project structure (short version)
 
 ```
 nvidia_blog_agent/
@@ -398,7 +492,7 @@ nvidia_blog_agent/
 
 ---
 
-## 10. Contributing
+## 11. Contributing
 
 Contributions are welcome.
 
@@ -408,13 +502,13 @@ Contributions are welcome.
 
 ---
 
-## 11. License
+## 12. License
 
 [Add your license information here (e.g. Apache 2.0, MIT).]
 
 ---
 
-## 12. Contact
+## 13. Contact
 
 [Add your preferred contact information or GitHub profile here.]
 

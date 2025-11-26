@@ -51,16 +51,23 @@ Verified exclusions:
 
 All secrets are managed via environment variables:
 
-**Required Variables** (set in `.env` or Cloud Run):
+**Secrets** (stored in Secret Manager or `.env` for local dev):
+- `INGEST_API_KEY` - API key for `/ingest` endpoint (Secret Manager: `ingest-api-key`)
+- `ADMIN_API_KEY` - Optional API key for `/admin/*` endpoints (Secret Manager: `admin-api-key`)
+- `RAG_API_KEY` - Optional RAG service API key (Secret Manager: `rag-api-key`)
+
+**Configuration** (environment variables):
 - `RAG_CORPUS_ID` - Vertex AI RAG corpus ID
-- `INGEST_API_KEY` - API key for `/ingest` endpoint
-- `RAG_API_KEY` - Optional RAG service API key
 - `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON (local dev only)
 
 **Code Pattern**:
 ```python
-# All code uses this pattern:
-api_key = os.environ.get("INGEST_API_KEY")
+# Secrets use Secret Manager with automatic fallback to environment variables:
+from nvidia_blog_agent.secrets import get_secret
+
+api_key = get_secret("ingest-api-key", project_id=os.environ.get("GOOGLE_CLOUD_PROJECT"))
+if not api_key:
+    api_key = os.environ.get("INGEST_API_KEY")  # Fallback for local dev
 if not api_key:
     raise ValueError("INGEST_API_KEY not set")
 ```
@@ -68,8 +75,8 @@ if not api_key:
 ## Recommendations
 
 1. ✅ **Current**: Using `.env` file for local development
-2. ✅ **Current**: Using Cloud Run environment variables for production
-3. 🎯 **Future**: Consider using Secret Manager for production secrets
+2. ✅ **Current**: Using Google Cloud Secret Manager for production secrets
+3. ✅ **Current**: Environment variables for non-secret configuration
 4. ✅ **Current**: Service account uses Application Default Credentials (no JSON keys in production)
 
 ## Summary
@@ -77,10 +84,11 @@ if not api_key:
 **Status**: ✅ **SECURE**
 
 - No secrets exposed in code
-- All secrets loaded from environment variables
+- Secrets stored in Google Cloud Secret Manager (production)
+- Automatic fallback to environment variables (local development)
 - `.env` file properly excluded from git
 - No service account JSON files committed
 - Documentation uses placeholders
 
-The codebase follows security best practices for secrets management.
+The codebase follows security best practices for secrets management using Secret Manager.
 
