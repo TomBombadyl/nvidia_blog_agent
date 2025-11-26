@@ -61,6 +61,7 @@ state.json
 .pytest_cache/
 .coverage
 htmlcov/
+.benchmarks/
 
 # Jupyter Notebook
 .ipynb_checkpoints
