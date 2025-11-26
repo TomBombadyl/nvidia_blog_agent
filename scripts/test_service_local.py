@@ -84,6 +84,27 @@ def test_ask(
         return False
 
 
+def test_mcp() -> bool:
+    """Test the /mcp endpoint (MCP protocol endpoint)."""
+    print("\nTesting /mcp endpoint (MCP protocol)...")
+    try:
+        # Test GET request (SSE endpoint)
+        response = httpx.get(f"{SERVICE_URL}/mcp", timeout=10.0)
+        # MCP endpoint might return different status codes, but shouldn't be 502
+        if response.status_code == 502:
+            print(f"❌ MCP endpoint returned 502 Bad Gateway (mount issue)")
+            return False
+        print(f"✅ MCP endpoint responded with status {response.status_code}")
+        print(f"   (This is expected - MCP uses specific protocol)")
+        return True
+    except httpx.ConnectError:
+        print("❌ MCP endpoint connection failed (service not running?)")
+        return False
+    except Exception as e:
+        print(f"❌ MCP endpoint test failed: {e}")
+        return False
+
+
 def test_ingest(api_key: str | None = None) -> bool:
     """Test the /ingest endpoint."""
     print("\nTesting /ingest endpoint...")
@@ -144,6 +165,9 @@ def main():
 
     # Test ask
     results.append(("Ask", test_ask()))
+
+    # Test MCP endpoint
+    results.append(("MCP", test_mcp()))
 
     # Test ingest (optional, may require API key)
     ingest_api_key = os.environ.get("INGEST_API_KEY")

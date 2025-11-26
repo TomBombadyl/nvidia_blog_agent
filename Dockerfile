@@ -57,8 +57,8 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Run the FastAPI service with uvicorn
-# Cloud Run sets PORT env var, but uvicorn needs it as --port argument
-# Use a shell form to interpolate the PORT env var
-CMD uvicorn service.app:app --host 0.0.0.0 --port ${PORT:-8080}
+# Run the FastAPI service with hypercorn (supports HTTP/2 for Cloud Run)
+# Cloud Run uses HTTP/2 (h2c), which uvicorn doesn't support
+# Hypercorn is a drop-in replacement that supports HTTP/2
+CMD hypercorn service.app:app --bind 0.0.0.0:${PORT:-8080} --workers 1
 

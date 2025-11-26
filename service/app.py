@@ -701,7 +701,7 @@ async def clear_cache(x_api_key: Optional[str] = Header(None, alias="X-API-Key")
 
 @app.post("/ingest", response_model=IngestResponse)
 async def trigger_ingestion(
-    request: Optional[IngestRequest] = Body(default=None),
+    http_request: Request,
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
 ):
     """Trigger the ingestion pipeline to discover and ingest new blog posts.
@@ -716,7 +716,7 @@ async def trigger_ingestion(
     X-API-Key header to match.
 
     Args:
-        request: IngestRequest containing optional feed_url (can be None or empty JSON {})
+        http_request: FastAPI Request object to parse body manually
         x_api_key: Optional API key from X-API-Key header
 
     Returns:
@@ -728,7 +728,25 @@ async def trigger_ingestion(
     # Check API key if configured
     ingest_api_key = os.environ.get("INGEST_API_KEY")
     if ingest_api_key:
+        # Strip whitespace from both keys to handle any encoding/whitespace issues
+        ingest_api_key = ingest_api_key.strip()
+        if x_api_key:
+            x_api_key = x_api_key.strip()
+        
+        # Debug logging to diagnose authentication issues
+        logger.info(
+            f"API key check: env_key_present={bool(ingest_api_key)}, "
+            f"header_key_present={bool(x_api_key)}, "
+            f"env_key_len={len(ingest_api_key) if ingest_api_key else 0}, "
+            f"header_key_len={len(x_api_key) if x_api_key else 0}"
+        )
         if x_api_key != ingest_api_key:
+            logger.error(
+                f"API key mismatch: header_key_len={len(x_api_key) if x_api_key else 0}, "
+                f"env_key_len={len(ingest_api_key) if ingest_api_key else 0}, "
+                f"header_key_repr={repr(x_api_key) if x_api_key else 'None'}, "
+                f"env_key_repr={repr(ingest_api_key) if ingest_api_key else 'None'}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or missing API key",
@@ -742,9 +760,38 @@ async def trigger_ingestion(
 
     try:
         logger.info("Starting ingestion pipeline...")
+        
+        # Parse request body manually to handle empty {} and populated JSON
+        feed_url = None
+        try:
+            body_bytes = await http_request.body()
+            if body_bytes:
+                body_json = json.loads(body_bytes.decode('utf-8'))
+                if isinstance(body_json, dict) and 'feed_url' in body_json:
+                    feed_url = body_json.get('feed_url')
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            # If body is not valid JSON or empty, use default (None)
+            pass
 
-        # Extract feed_url from request (handle None case for empty body)
-        feed_url = request.feed_url if request else None
+        # Determine source identifier based on feed URL
+        def get_source_from_feed_url(url: str | None) -> str:
+            """Determine source identifier from feed URL."""
+            if not url:
+                return "nvidia_tech_blog"  # Default feed
+            url_lower = url.lower()
+            if "nvidianews.nvidia.com" in url_lower or "releases.xml" in url_lower:
+                return "nvidia_news_releases"
+            elif "feeds.feedburner.com" in url_lower or "feedburner" in url_lower:
+                return "nvidia_blog_feedburner"
+            elif "blogs.nvidia.com" in url_lower:
+                return "nvidia_blog"
+            elif "developer.nvidia.com" in url_lower:
+                return "nvidia_tech_blog"
+            else:
+                return "nvidia_tech_blog"  # Default fallback
+        
+        source_identifier = get_source_from_feed_url(feed_url)
+        logger.info(f"Using source identifier: {source_identifier} for feed: {feed_url or 'default'}")
 
         # Load state
         state = load_state(_state_path)
@@ -766,6 +813,7 @@ async def trigger_ingestion(
             fetcher=fetcher,
             summarizer=summarizer,
             rag_client=_ingest_client,
+            default_source=source_identifier,
         )
 
         # Update state
